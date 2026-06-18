@@ -15,4 +15,13 @@ def create_app(config_class=Config):
 
     app.teardown_appcontext(close_db)
 
+    from .routes.auth_routes import auth_bp
+    from .routes.sensor_routes import sensor_bp, device_bp
+    from .routes.admin_routes import admin_bp
+
+    app.register_blueprint(auth_bp)
+    app.register_blueprint(sensor_bp)
+    app.register_blueprint(device_bp)
+    app.register_blueprint(admin_bp)
+
     return app
