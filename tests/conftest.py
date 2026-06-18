@@ -1,17 +1,18 @@
 import sqlite3
+import json
 import time
 import pytest
+from werkzeug.security import generate_password_hash
 
 
 @pytest.fixture
 def app(monkeypatch, tmp_path):
-    import endpoint
     db_path = str(tmp_path / "test.db")
-    monkeypatch.setattr("endpoint.DB_PATH", db_path)
-    endpoint.init_db()
-    endpoint._blacklist.clear()
-    endpoint.app.config["TESTING"] = True
-    return endpoint.app
+    monkeypatch.setattr("app.config.Config.DB_PATH", db_path)
+    from app import create_app
+    application = create_app()
+    application.config["TESTING"] = True
+    return application
 
 
 @pytest.fixture
@@ -21,8 +22,8 @@ def client(app):
 
 @pytest.fixture
 def db(app):
-    import endpoint
-    conn = sqlite3.connect(endpoint.DB_PATH)
+    from app.config import Config
+    conn = sqlite3.connect(Config.DB_PATH)
     conn.execute("PRAGMA foreign_keys=ON")
     conn.row_factory = sqlite3.Row
     yield conn
@@ -31,14 +32,14 @@ def db(app):
 
 @pytest.fixture
 def sample_data(db):
-    now = int(time.time() * 1000)
+    ts = 0
     db.execute(
         "INSERT OR IGNORE INTO controllers (mac, first_seen, last_seen, sensor_count) VALUES (?, ?, ?, ?)",
-        ("AA:BB:CC:DD:EE:FF", now, now, 2),
+        ("AA:BB:CC:DD:EE:FF", ts, ts, 2),
     )
     db.execute(
         "INSERT OR IGNORE INTO controllers (mac, first_seen, last_seen, sensor_count) VALUES (?, ?, ?, ?)",
-        ("11:22:33:44:55:66", now, now, 1),
+        ("11:22:33:44:55:66", ts, ts, 1),
     )
     db.execute(
         "INSERT OR IGNORE INTO sensors (sensor_address, controller_mac, location) VALUES (?, ?, ?)",
@@ -52,21 +53,23 @@ def sample_data(db):
         "INSERT OR IGNORE INTO sensors (sensor_address, controller_mac, location) VALUES (?, ?, ?)",
         ("SENSOR-003", "11:22:33:44:55:66", "Garage"),
     )
-    db.execute(
-        "INSERT INTO readings (sensor_id, temperature, recorded_at) VALUES (?, ?, ?)",
-        (1, 22.5, now - 10000),
-    )
-    db.execute(
-        "INSERT INTO readings (sensor_id, temperature, recorded_at) VALUES (?, ?, ?)",
-        (1, 23.0, now),
-    )
-    db.execute(
-        "INSERT INTO readings (sensor_id, temperature, recorded_at) VALUES (?, ?, ?)",
-        (2, 19.8, now),
-    )
+    for sid, temp, rec_ts in [(1, 22.5, ts), (1, 23.0, ts + 1), (2, 19.8, ts + 2)]:
+        db.execute(
+            "INSERT INTO readings (sensor_id, temperature, recorded_at) VALUES (?, ?, ?)",
+            (sid, temp, rec_ts),
+        )
     db.execute(
         "INSERT OR IGNORE INTO user_controllers (user_id, controller_mac) VALUES (?, ?)",
         (1, "AA:BB:CC:DD:EE:FF"),
     )
     db.commit()
-    return db
+    return {
+        "sensor_1_id": 1,
+        "sensor_2_id": 2,
+        "sensor_3_id": 3,
+        "controller_1": "AA:BB:CC:DD:EE:FF",
+        "controller_2": "11:22:33:44:55:66",
+        "user_admin_id": 1,
+        "temps_sensor_1": [22.5, 23.0],
+        "temps_sensor_2": [19.8],
+    }
