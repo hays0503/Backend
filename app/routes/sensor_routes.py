@@ -5,22 +5,20 @@ from ..auth import require_auth
 from ..config import Config
 from ..sensors import check_sensor_access, get_user_controller_macs
 from ..audit import log_action
+from ..responses import ok, error
+from ..schemas import use_schema, SensorDataBatch, RenameSensorRequest
 
 sensor_bp = Blueprint("sensor", __name__, url_prefix="/api/sensor")
 device_bp = Blueprint("device", __name__, url_prefix="/api/device")
 
 
 @sensor_bp.route("/data", methods=["POST"])
-def post_sensor_data():
-    data = request.get_json(silent=True)
-    if not data or not isinstance(data.get("readings"), list):
-        return jsonify({"error": "Invalid readings format"}), 400
-    controller_mac = data.get("controller_mac", "")
-    if not controller_mac:
-        return jsonify({"error": "controller_mac is required"}), 400
-    keep_count = data.get("keep_count", Config.KEEP_COUNT_DEFAULT)
+@use_schema(SensorDataBatch)
+def post_sensor_data(data):
+    controller_mac = data.controller_mac
+    keep_count = data.keep_count
     now = int(time.time() * 1000)
-    readings = data["readings"]
+    readings = data.readings
     inserted = 0
     duplicates = 0
     with sqlite3.connect(Config.DB_PATH) as conn:
@@ -35,17 +33,12 @@ def post_sensor_data():
             (controller_mac, now, now, len(readings)),
         )
         for r in readings:
-            address = r.get("address", "")
-            temperature = r.get("temperature")
-            recorded_at = r.get("recorded_at")
-            if not address or temperature is None or not recorded_at:
-                continue
             conn.execute(
                 "INSERT OR IGNORE INTO sensors (sensor_address, controller_mac) VALUES (?, ?)",
-                (address, controller_mac),
+                (r.address, controller_mac),
             )
             sensor_row = conn.execute(
-                "SELECT id FROM sensors WHERE sensor_address = ?", (address,)
+                "SELECT id FROM sensors WHERE sensor_address = ?", (r.address,)
             ).fetchone()
             if not sensor_row:
                 continue
@@ -53,7 +46,7 @@ def post_sensor_data():
             try:
                 conn.execute(
                     "INSERT OR IGNORE INTO readings (sensor_id, temperature, recorded_at) VALUES (?, ?, ?)",
-                    (sensor_id, temperature, recorded_at),
+                    (sensor_id, r.temperature, r.recorded_at),
                 )
                 if conn.total_changes > 0:
                     inserted += 1
@@ -73,14 +66,8 @@ def post_sensor_data():
             """,
                 (sid, sid, keep_count),
             )
-    return (
-        jsonify(
-            {
-                "inserted": inserted,
-                "duplicates": duplicates,
-                "server_time": now,
-            }
-        ),
+    return ok(
+        {"inserted": inserted, "duplicates": duplicates, "server_time": now},
         201,
     )
 
@@ -90,10 +77,10 @@ def post_sensor_data():
 def get_sensor_data():
     sensor_id = request.args.get("sensor_id", type=int)
     if not sensor_id:
-        return jsonify({"error": "sensor_id is required"}), 400
+        return error("sensor_id is required", 400)
     sensor = check_sensor_access(sensor_id, g.user_id)
     if sensor is None:
-        return jsonify({"error": "Access denied"}), 403
+        return error("Access denied", 403)
     with sqlite3.connect(Config.DB_PATH) as conn:
         rows = conn.execute(
             """
@@ -110,23 +97,20 @@ def get_sensor_data():
             (sensor_id,),
         ).fetchall()
     temps = [r[0] for r in rows]
-    return jsonify({"data": temps, "address": sensor[1]})
+    return ok({"data": temps, "address": sensor[1]})
 
 
 @sensor_bp.route("/rename", methods=["PUT"])
 @require_auth
-def rename_sensor():
-    data = request.get_json(silent=True)
-    if not data or not data.get("sensor_id") or not data.get("location"):
-        return jsonify({"error": "sensor_id and location are required"}), 400
-    sensor_id = data["sensor_id"]
-    location = data["location"]
-    sensor = check_sensor_access(sensor_id, g.user_id)
+@use_schema(RenameSensorRequest)
+def rename_sensor(data):
+    sensor = check_sensor_access(data.sensor_id, g.user_id)
     if sensor is None:
-        return jsonify({"error": "Access denied"}), 403
+        return error("Access denied", 403)
     with sqlite3.connect(Config.DB_PATH) as conn:
         conn.execute(
-            "UPDATE sensors SET location = ? WHERE id = ?", (location, sensor_id)
+            "UPDATE sensors SET location = ? WHERE id = ?",
+            (data.location, data.sensor_id),
         )
     with sqlite3.connect(Config.DB_PATH) as conn:
         row = conn.execute(
@@ -138,10 +122,10 @@ def rename_sensor():
         username,
         "sensor_renamed",
         "sensor",
-        str(sensor_id),
-        {"location": location},
+        str(data.sensor_id),
+        {"location": data.location},
     )
-    return jsonify({"success": True})
+    return ok()
 
 
 @device_bp.route("/info")
@@ -149,7 +133,7 @@ def rename_sensor():
 def device_info():
     macs = get_user_controller_macs(g.user_id)
     if not macs:
-        return jsonify({"count": 0, "sensors": []})
+        return ok({"count": 0, "sensors": []})
     placeholders = ",".join("?" for _ in macs)
     now_ms = int(time.time() * 1000)
     with sqlite3.connect(Config.DB_PATH) as conn:
@@ -175,4 +159,4 @@ def device_info():
                 "controller_mac": controller_mac,
             }
         )
-    return jsonify({"count": len(sensors), "sensors": sensors})
+    return ok({"count": len(sensors), "sensors": sensors})

@@ -15,6 +15,10 @@ def create_app(config_class=Config):
 
     app.teardown_appcontext(close_db)
 
+    from .errors import register_error_handlers
+
+    register_error_handlers(app)
+
     from .routes.auth_routes import auth_bp
     from .routes.sensor_routes import sensor_bp, device_bp
     from .routes.admin_routes import admin_bp

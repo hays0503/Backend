@@ -1,5 +1,5 @@
 import sqlite3
-from flask import Blueprint, request, jsonify, g
+from flask import Blueprint, g
 from werkzeug.security import check_password_hash, generate_password_hash
 from ..auth import (
     create_access_token,
@@ -11,27 +11,27 @@ from ..auth import (
 from ..audit import log_action
 from ..config import Config
 from ..sensors import get_user_controller_macs
+from ..responses import ok, error
+from ..schemas import use_schema, LoginRequest, RefreshRequest, ProfileUpdate
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/api/auth")
 
 
 @auth_bp.route("/login", methods=["POST"])
-def login():
-    data = request.get_json(silent=True)
-    if not data or not data.get("username") or not data.get("password"):
-        return jsonify({"error": "Missing credentials"}), 400
+@use_schema(LoginRequest)
+def login(data):
     with sqlite3.connect(Config.DB_PATH) as conn:
         row = conn.execute(
             "SELECT id, username, password_hash, role FROM users WHERE username = ?",
-            (data["username"],),
+            (data.username,),
         ).fetchone()
-    if not row or not check_password_hash(row[2], data["password"]):
-        return jsonify({"error": "Invalid credentials"}), 401
+    if not row or not check_password_hash(row[2], data.password):
+        return error("Invalid credentials", 401)
     user_id, username, _, role = row
     access_token = create_access_token(user_id, role)
     refresh_token, _ = create_refresh_token(user_id)
     log_action(user_id, username, "login")
-    return jsonify(
+    return ok(
         {
             "access_token": access_token,
             "refresh_token": refresh_token,
@@ -41,13 +41,11 @@ def login():
 
 
 @auth_bp.route("/refresh", methods=["POST"])
-def refresh():
-    data = request.get_json(silent=True)
-    if not data or not data.get("refresh_token"):
-        return jsonify({"error": "Missing refresh token"}), 400
-    payload = decode_token(data["refresh_token"], "refresh")
+@use_schema(RefreshRequest)
+def refresh(data):
+    payload = decode_token(data.refresh_token, "refresh")
     if not payload:
-        return jsonify({"error": "Invalid refresh token"}), 401
+        return error("Invalid refresh token", 401)
     old_jti = payload["jti"]
     revoke_refresh_token(old_jti)
     user_id = payload["user_id"]
@@ -56,10 +54,10 @@ def refresh():
             "SELECT id, username, role FROM users WHERE id = ?", (user_id,)
         ).fetchone()
     if not row:
-        return jsonify({"error": "User not found"}), 401
+        return error("User not found", 401)
     access_token = create_access_token(row[0], row[2])
     refresh_token, _ = create_refresh_token(row[0])
-    return jsonify({"access_token": access_token, "refresh_token": refresh_token})
+    return ok({"access_token": access_token, "refresh_token": refresh_token})
 
 
 @auth_bp.route("/me")
@@ -70,9 +68,9 @@ def auth_me():
             "SELECT id, username, role FROM users WHERE id = ?", (g.user_id,)
         ).fetchone()
     if not row:
-        return jsonify({"error": "User not found"}), 404
+        return error("User not found", 404)
     controllers = get_user_controller_macs(g.user_id)
-    return jsonify(
+    return ok(
         {
             "id": row[0],
             "username": row[1],
@@ -84,34 +82,32 @@ def auth_me():
 
 @auth_bp.route("/profile", methods=["PUT"])
 @require_auth
-def auth_profile():
-    data = request.get_json(silent=True)
-    if not data or not data.get("current_password"):
-        return jsonify({"error": "Current password is required"}), 400
+@use_schema(ProfileUpdate)
+def auth_profile(data):
     with sqlite3.connect(Config.DB_PATH) as conn:
         row = conn.execute(
             "SELECT id, username, password_hash, role FROM users WHERE id = ?",
             (g.user_id,),
         ).fetchone()
-    if not row or not check_password_hash(row[2], data["current_password"]):
-        return jsonify({"error": "Current password is incorrect"}), 400
+    if not row or not check_password_hash(row[2], data.current_password):
+        return error("Current password is incorrect", 400)
     user_id, username, _, role = row
     update_fields = []
     update_values = []
-    if data.get("username"):
+    if data.username:
         with sqlite3.connect(Config.DB_PATH) as conn2:
             existing = conn2.execute(
                 "SELECT id FROM users WHERE username = ? AND id != ?",
-                (data["username"], user_id),
+                (data.username, user_id),
             ).fetchone()
         if existing:
-            return jsonify({"error": "Username already exists"}), 400
+            return error("Username already exists", 400)
         update_fields.append("username = ?")
-        update_values.append(data["username"])
-        username = data["username"]
-    if data.get("password"):
+        update_values.append(data.username)
+        username = data.username
+    if data.password:
         update_fields.append("password_hash = ?")
-        update_values.append(generate_password_hash(data["password"]))
+        update_values.append(generate_password_hash(data.password))
     if update_fields:
         with sqlite3.connect(Config.DB_PATH) as conn2:
             conn2.execute(
@@ -119,4 +115,4 @@ def auth_profile():
                 (*update_values, user_id),
             )
     log_action(user_id, username, "profile_updated")
-    return jsonify({"id": user_id, "username": username, "role": role})
+    return ok({"id": user_id, "username": username, "role": role})
