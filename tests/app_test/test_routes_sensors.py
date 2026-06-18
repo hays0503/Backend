@@ -68,6 +68,75 @@ class TestPostSensorDataBlackBox:
         )
         assert resp.status_code == 400
 
+    def test_controller_upserted_with_sensor_count(self, client, auth_headers):
+        """New controller auto-created on POST with correct sensor_count."""
+        mac = "MAC:UPSERT:CNT:01"
+        resp = client.post(
+            "/api/sensor/data",
+            json={
+                "controller_mac": mac,
+                "readings": [{"address": "ADDR-UPS-1", "temperature": 22.0, "recorded_at": 1000000}],
+            },
+        )
+        assert resp.status_code == 201
+
+        ctrls = client.get("/api/admin/controllers", headers=auth_headers).get_json()["controllers"]
+        match = [c for c in ctrls if c["mac"] == mac]
+        assert len(match) == 1
+        assert match[0]["sensor_count"] >= 1
+
+    def test_reading_with_empty_address_returns_400(self, client):
+        """Reading with empty address string fails Pydantic validation (min_length=1)."""
+        resp = client.post(
+            "/api/sensor/data",
+            json={
+                "controller_mac": "MAC:VALID:01",
+                "readings": [
+                    {"address": "", "temperature": 23.0, "recorded_at": 3000000},
+                ],
+            },
+        )
+        assert resp.status_code == 400
+        assert "address" in resp.get_json()["error"].lower()
+
+    def test_reading_missing_temperature_returns_400(self, client):
+        """Reading without temperature field fails Pydantic validation."""
+        resp = client.post(
+            "/api/sensor/data",
+            json={
+                "controller_mac": "MAC:VALID:01",
+                "readings": [
+                    {"address": "S-NO-TEMP", "recorded_at": 3000000},
+                ],
+            },
+        )
+        assert resp.status_code == 400
+        assert "temperature" in resp.get_json()["error"].lower()
+
+    def test_pruning_old_readings_keeps_only_keep_count(self, client, sample_data, auth_headers):
+        """POST with keep_count prunes oldest readings beyond that count."""
+        addr = "ADDR-PRUNE-1"
+        mac = sample_data["controller_1"]
+        resp = client.post(
+            "/api/sensor/data",
+            json={
+                "controller_mac": mac,
+                "readings": [
+                    {"address": addr, "temperature": float(i), "recorded_at": 4000000 + i}
+                    for i in range(5)
+                ],
+                "keep_count": 3,
+            },
+        )
+        assert resp.status_code == 201
+        assert resp.get_json()["inserted"] == 5
+
+        info = client.get("/api/device/info", headers=auth_headers).get_json()
+        sensor = next(s for s in info["sensors"] if s["address"] == addr)
+        data_resp = client.get(f"/api/sensor/data?sensor_id={sensor['sensor_id']}", headers=auth_headers)
+        assert data_resp.status_code == 200
+        assert len(data_resp.get_json()["data"]) == 3
+
 
 class TestGetSensorDataBlackBox:
     def test_get_returns_temperatures_in_asc_order(self, client, sample_data, auth_headers):

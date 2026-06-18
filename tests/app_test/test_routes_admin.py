@@ -229,6 +229,23 @@ class TestAdminAssignControllersBlackBox:
         )
         assert resp.status_code == 404
 
+    def test_assign_new_controllers_replace_old_ones(self, client, auth_headers):
+        """Assigning controllers replaces previous assignment, does not append."""
+        client.put(
+            "/api/admin/users/1/controllers",
+            json={"controllers": ["00:11:22:33:44:55"]},
+            headers=auth_headers,
+        )
+        client.put(
+            "/api/admin/users/1/controllers",
+            json={"controllers": ["66:77:88:99:AA:BB"]},
+            headers=auth_headers,
+        )
+        resp = client.get("/api/auth/me", headers=auth_headers)
+        controllers = resp.get_json()["controllers"]
+        assert "00:11:22:33:44:55" not in controllers
+        assert "66:77:88:99:AA:BB" in controllers
+
 
 class TestAdminListControllersBlackBox:
     def test_list_controllers_returns_list(self, client, sample_data, auth_headers):
