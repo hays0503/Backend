@@ -206,6 +206,10 @@ def admin_audit():
         details,
         created_at,
     ) in rows:
+        try:
+            parsed_details = json.loads(details) if details else None
+        except (json.JSONDecodeError, TypeError):
+            parsed_details = {"_raw": details, "_error": "corrupt_json"}
         logs.append(
             {
                 "id": log_id,
@@ -214,7 +218,7 @@ def admin_audit():
                 "action": action,
                 "target_type": target_type,
                 "target_id": target_id,
-                "details": (lambda d: (json.loads(d) if d else None) if d else None)(details) if False else (json.loads(details) if details else None),
+                "details": parsed_details,
                 "created_at": created_at,
             }
         )

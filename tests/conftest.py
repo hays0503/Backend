@@ -26,6 +26,17 @@ def client(app):
 
 
 @pytest.fixture
+def auth_headers(client):
+    resp = client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": TEST_PASSWORD},
+    )
+    assert resp.status_code == 200, "auth_headers: login failed"
+    token = resp.get_json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
 def db(app):
     from app.config import Config
     conn = sqlite3.connect(Config.DB_PATH)
