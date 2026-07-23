@@ -20,7 +20,8 @@ def setup_admin():
     if not username or len(username) < 3:
         return jsonify({"error": {"code": "VALIDATION_ERROR",
                                    "message": "Username is required (min 3 characters)"}}), 400
-    created, error = seed_admin(username, password)
-    if not created:
+    result = seed_admin(username, password)
+    if result is not True:
+        error = result[1] if isinstance(result, tuple) else "Unknown error"
         return jsonify({"error": {"code": "SETUP_FAILED", "message": error}}), 400
     return jsonify({"message": f"Admin '{username}' created"}), 201

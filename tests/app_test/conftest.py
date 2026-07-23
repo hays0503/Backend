@@ -2,15 +2,18 @@ import sqlite3
 import pytest
 from app.db import seed_admin
 
+TEST_PASSWORD = "Admin123456!"
+
 
 @pytest.fixture
 def app(monkeypatch, tmp_path):
     db_path = str(tmp_path / "test.db")
     monkeypatch.setattr("app.config.Config.DB_PATH", db_path)
+    monkeypatch.setattr("app.config.Config.SECRET_KEY", "test-secret-key-not-for-production")
     from app import create_app
     application = create_app()
     application.config["TESTING"] = True
-    seed_admin("admin", "admin", db_path)
+    seed_admin("admin", TEST_PASSWORD, db_path)
     return application
 
 
@@ -24,7 +27,7 @@ def auth_headers(client):
     """Black-box: login as admin, return Authorization header."""
     resp = client.post(
         "/api/auth/login",
-        json={"username": "admin", "password": "admin"},
+        json={"username": "admin", "password": TEST_PASSWORD},
     )
     assert resp.status_code == 200, "auth_headers: login failed"
     token = resp.get_json()["access_token"]

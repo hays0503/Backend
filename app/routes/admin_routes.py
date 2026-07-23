@@ -5,7 +5,6 @@ from flask import Blueprint, request, g
 from werkzeug.security import generate_password_hash
 from ..auth import require_auth, require_admin
 from ..config import Config
-from ..sensors import get_user_controller_macs
 from ..audit import log_action
 from ..responses import ok, error
 from ..schemas import (
@@ -31,12 +30,21 @@ def _get_username(user_id):
 @require_admin
 def admin_list_users():
     with sqlite3.connect(Config.DB_PATH) as conn:
-        rows = conn.execute(
-            "SELECT id, username, role, created_at FROM users ORDER BY id"
-        ).fetchall()
+        rows = conn.execute("""
+            SELECT
+                u.id,
+                u.username,
+                u.role,
+                u.created_at,
+                GROUP_CONCAT(uc.controller_mac) AS macs
+            FROM users u
+            LEFT JOIN user_controllers uc ON uc.user_id = u.id
+            GROUP BY u.id
+            ORDER BY u.id
+        """).fetchall()
     users = []
-    for uid, username, role, created_at in rows:
-        controllers = get_user_controller_macs(uid)
+    for uid, username, role, created_at, macs in rows:
+        controllers = macs.split(",") if macs else []
         users.append(
             {
                 "id": uid,

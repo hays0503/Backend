@@ -7,19 +7,18 @@ from werkzeug.security import generate_password_hash
 from .config import Config
 
 
-def validate_password_strength(password: str) -> list[str]:
-    errors = []
+def validate_password_strength(password: str) -> tuple[bool, str | None]:
     if len(password) < 12:
-        errors.append("Password must be at least 12 characters")
+        return False, "Password must be at least 12 characters long"
     if not re.search(r"[a-z]", password):
-        errors.append("Password must contain at least one lowercase letter")
+        return False, "Password must contain at least one lowercase letter"
     if not re.search(r"[A-Z]", password):
-        errors.append("Password must contain at least one uppercase letter")
+        return False, "Password must contain at least one uppercase letter"
     if not re.search(r"\d", password):
-        errors.append("Password must contain at least one digit")
+        return False, "Password must contain at least one digit"
     if not re.search(r"[!@#$%^&*()_+\-=\[\]{};':\"\\|,.<>\/?]", password):
-        errors.append("Password must contain at least one special character")
-    return errors
+        return False, "Password must contain at least one special character"
+    return True, None
 
 
 def init_db(db_path=None):
@@ -59,6 +58,22 @@ def init_db(db_path=None):
             CREATE INDEX IF NOT EXISTS idx_readings_sensor_time
             ON readings(sensor_id, recorded_at DESC)
         """)
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_sensors_controller_mac "
+            "ON sensors(controller_mac)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_user_controllers_controller_mac "
+            "ON user_controllers(controller_mac)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_audit_log_created_at "
+            "ON audit_log(created_at DESC)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_controllers_last_seen "
+            "ON controllers(last_seen DESC)"
+        )
 
         conn.execute("""
             CREATE TABLE IF NOT EXISTS users (
@@ -97,14 +112,14 @@ def init_db(db_path=None):
 def seed_admin(username, password, db_path=None):
     """Create an admin user if no users exist yet.
 
-    Returns (True, None) if the admin was created,
+    Returns True if the admin was created,
     (False, error_message) if validation fails or users already exist.
     """
     if not username or not password:
         return False, "Username and password are required"
-    errors = validate_password_strength(password)
-    if errors:
-        return False, "; ".join(errors)
+    ok, msg = validate_password_strength(password)
+    if not ok:
+        return False, msg
     path = db_path or Config.DB_PATH
     with sqlite3.connect(path) as conn:
         row = conn.execute("SELECT COUNT(*) FROM users").fetchone()
@@ -123,7 +138,7 @@ def seed_admin(username, password, db_path=None):
             "INSERT INTO audit_log (user_id, username, action, target_type, target_id, details, created_at) VALUES (?, 'system', 'admin_seeded', 'user', ?, ?, ?)",
             (user_id, username, json.dumps({"username": username}), now),
         )
-    return True, None
+    return True
 
 
 def get_db():

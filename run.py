@@ -19,20 +19,19 @@ def create_admin():
     if not password:
         print("Password cannot be empty.")
         sys.exit(1)
-    errors = validate_password_strength(password)
-    if errors:
-        print("Password does not meet requirements:")
-        for e in errors:
-            print(f"  - {e}")
+    ok, msg = validate_password_strength(password)
+    if not ok:
+        print(f"Password does not meet requirements: {msg}")
         sys.exit(1)
     confirm = getpass.getpass("Confirm password: ")
     if password != confirm:
         print("Passwords do not match.")
         sys.exit(1)
-    created, error = seed_admin(username, password)
-    if created:
+    result = seed_admin(username, password)
+    if result is True:
         print(f"Admin user '{username}' created.")
     else:
+        error = result[1] if isinstance(result, tuple) else "Unknown error"
         print(f"Admin creation failed: {error}")
         sys.exit(1)
 

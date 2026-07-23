@@ -5,15 +5,18 @@ import pytest
 from werkzeug.security import generate_password_hash
 from app.db import seed_admin
 
+TEST_PASSWORD = "Admin123456!"
+
 
 @pytest.fixture
 def app(monkeypatch, tmp_path):
     db_path = str(tmp_path / "test.db")
     monkeypatch.setattr("app.config.Config.DB_PATH", db_path)
+    monkeypatch.setattr("app.config.Config.SECRET_KEY", "test-secret-key-not-for-production")
     from app import create_app
     application = create_app()
     application.config["TESTING"] = True
-    seed_admin("admin", "admin", db_path)
+    seed_admin("admin", TEST_PASSWORD, db_path)
     return application
 
 
