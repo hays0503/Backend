@@ -15,6 +15,13 @@ device_bp = Blueprint("device", __name__, url_prefix="/api/device")
 @sensor_bp.route("/data", methods=["POST"])
 @use_schema(SensorDataBatch)
 def post_sensor_data(data):
+    if len(data.readings) > 100:
+        return error("Batch too large (max 100 readings)", 400)
+
+    for i, r in enumerate(data.readings):
+        if not (-50 <= r.temperature <= 150):
+            return error(f"Reading {i}: temperature {r.temperature} out of range (-50..150)", 400)
+
     controller_mac = data.controller_mac
     keep_count = data.keep_count
     now = int(time.time() * 1000)
@@ -44,16 +51,17 @@ def post_sensor_data(data):
                 continue
             sensor_id = sensor_row[0]
             try:
-                conn.execute(
+                cur = conn.execute(
                     "INSERT OR IGNORE INTO readings (sensor_id, temperature, recorded_at) VALUES (?, ?, ?)",
                     (sensor_id, r.temperature, r.recorded_at),
                 )
-                if conn.total_changes > 0:
+                if cur.rowcount > 0:
                     inserted += 1
                 else:
                     duplicates += 1
-            except Exception:
-                duplicates += 1
+            except sqlite3.Error:
+                conn.rollback()
+                return error("Database error while storing readings", 500)
         sensor_ids = conn.execute(
             "SELECT id FROM sensors WHERE controller_mac = ?", (controller_mac,)
         ).fetchall()

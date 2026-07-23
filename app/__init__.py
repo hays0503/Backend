@@ -22,6 +22,21 @@ def create_app(config_class=Config):
 
     CORS(app, origins=config_class.CORS_ORIGINS)
 
+    import logging
+    import time as _time
+
+    @app.before_request
+    def log_request_start():
+        g._start_time = _time.time()
+
+    @app.after_request
+    def log_request(response):
+        duration = _time.time() - getattr(g, '_start_time', _time.time())
+        logging.info(
+            f"{request.method} {request.path} {response.status_code} {duration:.3f}s"
+        )
+        return response
+
     from .db import init_db, seed_admin, close_db
 
     init_db()
