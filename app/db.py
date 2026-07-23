@@ -122,6 +122,22 @@ def init_db(db_path=None):
             )
         """)
 
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS schema_version (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                version INTEGER NOT NULL,
+                applied_at INTEGER NOT NULL
+            )
+        """)
+
+        row = conn.execute("SELECT COUNT(*) FROM schema_version").fetchone()
+        if row[0] == 0:
+            now = int(time.time())
+            conn.execute(
+                "INSERT INTO schema_version (version, applied_at) VALUES (?, ?)",
+                (1, now),
+            )
+
         # --- Performance indexes (B-07) ---
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_sensors_controller_mac "
@@ -186,4 +202,5 @@ def get_db():
 def close_db(e=None):
     db = g.pop("db", None)
     if db is not None:
+        db.commit()
         db.close()

@@ -1,10 +1,10 @@
 import time
 import uuid
-import sqlite3
 from functools import wraps
 from flask import request, jsonify, g
 import jwt
 from .config import Config
+from .db import get_db
 
 
 def create_access_token(user_id, role):
@@ -38,20 +38,20 @@ def create_refresh_token(user_id, jti=None):
 
 
 def store_session(jti, user_id, expires_at, token_version=0):
-    with sqlite3.connect(Config.DB_PATH) as conn:
-        now = int(time.time())
-        conn.execute(
-            "INSERT INTO auth_sessions (jti, user_id, token_version, expires_at, revoked_at, created_at) "
-            "VALUES (?, ?, ?, ?, NULL, ?)",
-            (jti, user_id, token_version, expires_at, now),
-        )
+    conn = get_db()
+    now = int(time.time())
+    conn.execute(
+        "INSERT INTO auth_sessions (jti, user_id, token_version, expires_at, revoked_at, created_at) "
+        "VALUES (?, ?, ?, ?, NULL, ?)",
+        (jti, user_id, token_version, expires_at, now),
+    )
 
 
 def is_session_revoked(jti):
-    with sqlite3.connect(Config.DB_PATH) as conn:
-        row = conn.execute(
-            "SELECT revoked_at FROM auth_sessions WHERE jti = ?", (jti,)
-        ).fetchone()
+    conn = get_db()
+    row = conn.execute(
+        "SELECT revoked_at FROM auth_sessions WHERE jti = ?", (jti,)
+    ).fetchone()
     if not row:
         return False
     return row[0] is not None
@@ -59,20 +59,20 @@ def is_session_revoked(jti):
 
 def revoke_session(jti):
     now = int(time.time())
-    with sqlite3.connect(Config.DB_PATH) as conn:
-        conn.execute(
-            "UPDATE auth_sessions SET revoked_at = ? WHERE jti = ? AND revoked_at IS NULL",
-            (now, jti),
-        )
+    conn = get_db()
+    conn.execute(
+        "UPDATE auth_sessions SET revoked_at = ? WHERE jti = ? AND revoked_at IS NULL",
+        (now, jti),
+    )
 
 
 def revoke_all_sessions(user_id):
     now = int(time.time())
-    with sqlite3.connect(Config.DB_PATH) as conn:
-        conn.execute(
-            "UPDATE auth_sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL",
-            (now, user_id),
-        )
+    conn = get_db()
+    conn.execute(
+        "UPDATE auth_sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL",
+        (now, user_id),
+    )
 
 
 def decode_token(token, expected_type):

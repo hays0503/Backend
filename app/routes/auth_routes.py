@@ -1,4 +1,3 @@
-import sqlite3
 from flask import Blueprint, g
 from werkzeug.security import check_password_hash, generate_password_hash
 from ..auth import (
@@ -15,6 +14,7 @@ from ..config import Config
 from ..sensors import get_user_controller_macs
 from ..responses import ok, error
 from ..schemas import use_schema, LoginRequest, RefreshRequest, ProfileUpdate
+from ..db import get_db
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/api/auth")
 
@@ -22,11 +22,11 @@ auth_bp = Blueprint("auth", __name__, url_prefix="/api/auth")
 @auth_bp.route("/login", methods=["POST"])
 @use_schema(LoginRequest)
 def login(data):
-    with sqlite3.connect(Config.DB_PATH) as conn:
-        row = conn.execute(
-            "SELECT id, username, password_hash, role FROM users WHERE username = ?",
-            (data.username,),
-        ).fetchone()
+    conn = get_db()
+    row = conn.execute(
+        "SELECT id, username, password_hash, role FROM users WHERE username = ?",
+        (data.username,),
+    ).fetchone()
     if not row or not check_password_hash(row[2], data.password):
         return error("Invalid credentials", 401)
     user_id, username, _, role = row
@@ -54,10 +54,10 @@ def refresh(data):
     old_jti = payload["jti"]
     revoke_session(old_jti)
     user_id = payload["user_id"]
-    with sqlite3.connect(Config.DB_PATH) as conn:
-        row = conn.execute(
-            "SELECT id, username, role FROM users WHERE id = ?", (user_id,)
-        ).fetchone()
+    conn = get_db()
+    row = conn.execute(
+        "SELECT id, username, role FROM users WHERE id = ?", (user_id,)
+    ).fetchone()
     if not row:
         return error("User not found", 401)
     access_token = create_access_token(row[0], row[2])
@@ -71,10 +71,10 @@ def refresh(data):
 @auth_bp.route("/me")
 @require_auth
 def auth_me():
-    with sqlite3.connect(Config.DB_PATH) as conn:
-        row = conn.execute(
-            "SELECT id, username, role FROM users WHERE id = ?", (g.user_id,)
-        ).fetchone()
+    conn = get_db()
+    row = conn.execute(
+        "SELECT id, username, role FROM users WHERE id = ?", (g.user_id,)
+    ).fetchone()
     if not row:
         return error("User not found", 404)
     controllers = get_user_controller_macs(g.user_id)
@@ -92,22 +92,21 @@ def auth_me():
 @require_auth
 @use_schema(ProfileUpdate)
 def auth_profile(data):
-    with sqlite3.connect(Config.DB_PATH) as conn:
-        row = conn.execute(
-            "SELECT id, username, password_hash, role FROM users WHERE id = ?",
-            (g.user_id,),
-        ).fetchone()
+    conn = get_db()
+    row = conn.execute(
+        "SELECT id, username, password_hash, role FROM users WHERE id = ?",
+        (g.user_id,),
+    ).fetchone()
     if not row or not check_password_hash(row[2], data.current_password):
         return error("Current password is incorrect", 400)
     user_id, username, _, role = row
     update_fields = []
     update_values = []
     if data.username:
-        with sqlite3.connect(Config.DB_PATH) as conn2:
-            existing = conn2.execute(
-                "SELECT id FROM users WHERE username = ? AND id != ?",
-                (data.username, user_id),
-            ).fetchone()
+        existing = conn.execute(
+            "SELECT id FROM users WHERE username = ? AND id != ?",
+            (data.username, user_id),
+        ).fetchone()
         if existing:
             return error("Username already exists", 400)
         update_fields.append("username = ?")
@@ -117,11 +116,10 @@ def auth_profile(data):
         update_fields.append("password_hash = ?")
         update_values.append(generate_password_hash(data.password))
     if update_fields:
-        with sqlite3.connect(Config.DB_PATH) as conn2:
-            conn2.execute(
-                f"UPDATE users SET {', '.join(update_fields)} WHERE id = ?",
-                (*update_values, user_id),
-            )
+        conn.execute(
+            f"UPDATE users SET {', '.join(update_fields)} WHERE id = ?",
+            (*update_values, user_id),
+        )
     if data.password:
         revoke_all_sessions(user_id)
     log_action(user_id, username, "profile_updated")

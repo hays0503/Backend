@@ -1,10 +1,8 @@
-import sqlite3
 import json
 import time
 from flask import Blueprint, request, g
 from werkzeug.security import generate_password_hash
 from ..auth import require_auth, require_admin, revoke_all_sessions
-from ..config import Config
 from ..audit import log_action
 from ..responses import ok, error
 from ..schemas import (
@@ -13,6 +11,7 @@ from ..schemas import (
     ResetPasswordRequest,
     AssignControllersRequest,
 )
+from ..db import get_db
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/api/admin")
 
@@ -29,10 +28,10 @@ def parse_pagination_args():
 
 
 def _get_username(user_id):
-    with sqlite3.connect(Config.DB_PATH) as conn:
-        row = conn.execute(
-            "SELECT username FROM users WHERE id = ?", (user_id,)
-        ).fetchone()
+    conn = get_db()
+    row = conn.execute(
+        "SELECT username FROM users WHERE id = ?", (user_id,)
+    ).fetchone()
     return row[0] if row else "unknown"
 
 
@@ -41,21 +40,21 @@ def _get_username(user_id):
 @require_admin
 def admin_list_users():
     limit, offset = parse_pagination_args()
-    with sqlite3.connect(Config.DB_PATH) as conn:
-        total = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
-        rows = conn.execute("""
-            SELECT
-                u.id,
-                u.username,
-                u.role,
-                u.created_at,
-                GROUP_CONCAT(uc.controller_mac) AS macs
-            FROM users u
-            LEFT JOIN user_controllers uc ON uc.user_id = u.id
-            GROUP BY u.id
-            ORDER BY u.id
-            LIMIT ? OFFSET ?
-        """, (limit, offset)).fetchall()
+    conn = get_db()
+    total = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+    rows = conn.execute("""
+        SELECT
+            u.id,
+            u.username,
+            u.role,
+            u.created_at,
+            GROUP_CONCAT(uc.controller_mac) AS macs
+        FROM users u
+        LEFT JOIN user_controllers uc ON uc.user_id = u.id
+        GROUP BY u.id
+        ORDER BY u.id
+        LIMIT ? OFFSET ?
+    """, (limit, offset)).fetchall()
     users = []
     for uid, username, role, created_at, macs in rows:
         controllers = macs.split(",") if macs else []
@@ -82,21 +81,21 @@ def admin_list_users():
 @require_admin
 @use_schema(CreateUserRequest)
 def admin_create_user(data):
-    with sqlite3.connect(Config.DB_PATH) as conn:
-        existing = conn.execute(
-            "SELECT id FROM users WHERE username = ?", (data.username,)
-        ).fetchone()
-        if existing:
-            return error("Username already exists", 400)
-        h = generate_password_hash(data.password)
-        now = int(time.time() * 1000)
-        conn.execute(
-            "INSERT INTO users (username, password_hash, role, created_at) VALUES (?, ?, 'user', ?)",
-            (data.username, h, now),
-        )
-        new_id = conn.execute(
-            "SELECT id FROM users WHERE username = ?", (data.username,)
-        ).fetchone()[0]
+    conn = get_db()
+    existing = conn.execute(
+        "SELECT id FROM users WHERE username = ?", (data.username,)
+    ).fetchone()
+    if existing:
+        return error("Username already exists", 400)
+    h = generate_password_hash(data.password)
+    now = int(time.time() * 1000)
+    conn.execute(
+        "INSERT INTO users (username, password_hash, role, created_at) VALUES (?, ?, 'user', ?)",
+        (data.username, h, now),
+    )
+    new_id = conn.execute(
+        "SELECT id FROM users WHERE username = ?", (data.username,)
+    ).fetchone()[0]
     username = _get_username(g.user_id)
     log_action(
         g.user_id,
@@ -113,20 +112,20 @@ def admin_create_user(data):
 @require_auth
 @require_admin
 def admin_delete_user(user_id):
-    with sqlite3.connect(Config.DB_PATH) as conn:
-        row = conn.execute(
-            "SELECT id, role FROM users WHERE id = ?", (user_id,)
-        ).fetchone()
-        if not row:
-            return error("User not found", 404)
-        admin_count = conn.execute(
-            "SELECT COUNT(*) FROM users WHERE role = 'admin'"
-        ).fetchone()[0]
-        if row[1] == "admin" and admin_count <= 1:
-            return error("Cannot delete the last admin", 400)
-        revoke_all_sessions(user_id)
-        conn.execute("DELETE FROM user_controllers WHERE user_id = ?", (user_id,))
-        conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+    conn = get_db()
+    row = conn.execute(
+        "SELECT id, role FROM users WHERE id = ?", (user_id,)
+    ).fetchone()
+    if not row:
+        return error("User not found", 404)
+    admin_count = conn.execute(
+        "SELECT COUNT(*) FROM users WHERE role = 'admin'"
+    ).fetchone()[0]
+    if row[1] == "admin" and admin_count <= 1:
+        return error("Cannot delete the last admin", 400)
+    revoke_all_sessions(user_id)
+    conn.execute("DELETE FROM user_controllers WHERE user_id = ?", (user_id,))
+    conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
     username = _get_username(g.user_id)
     log_action(g.user_id, username, "user_deleted", "user", str(user_id))
     return ok()
@@ -137,12 +136,12 @@ def admin_delete_user(user_id):
 @require_admin
 @use_schema(ResetPasswordRequest)
 def admin_reset_password(data, user_id):
-    with sqlite3.connect(Config.DB_PATH) as conn:
-        row = conn.execute("SELECT id FROM users WHERE id = ?", (user_id,)).fetchone()
-        if not row:
-            return error("User not found", 404)
-        h = generate_password_hash(data.new_password)
-        conn.execute("UPDATE users SET password_hash = ? WHERE id = ?", (h, user_id))
+    conn = get_db()
+    row = conn.execute("SELECT id FROM users WHERE id = ?", (user_id,)).fetchone()
+    if not row:
+        return error("User not found", 404)
+    h = generate_password_hash(data.new_password)
+    conn.execute("UPDATE users SET password_hash = ? WHERE id = ?", (h, user_id))
     revoke_all_sessions(user_id)
     username = _get_username(g.user_id)
     log_action(g.user_id, username, "password_reset", "user", str(user_id))
@@ -154,16 +153,16 @@ def admin_reset_password(data, user_id):
 @require_admin
 @use_schema(AssignControllersRequest)
 def admin_assign_controllers(data, user_id):
-    with sqlite3.connect(Config.DB_PATH) as conn:
-        row = conn.execute("SELECT id FROM users WHERE id = ?", (user_id,)).fetchone()
-        if not row:
-            return error("User not found", 404)
-        conn.execute("DELETE FROM user_controllers WHERE user_id = ?", (user_id,))
-        for mac in data.controllers:
-            conn.execute(
-                "INSERT INTO user_controllers (user_id, controller_mac) VALUES (?, ?)",
-                (user_id, mac),
-            )
+    conn = get_db()
+    row = conn.execute("SELECT id FROM users WHERE id = ?", (user_id,)).fetchone()
+    if not row:
+        return error("User not found", 404)
+    conn.execute("DELETE FROM user_controllers WHERE user_id = ?", (user_id,))
+    for mac in data.controllers:
+        conn.execute(
+            "INSERT INTO user_controllers (user_id, controller_mac) VALUES (?, ?)",
+            (user_id, mac),
+        )
     username = _get_username(g.user_id)
     log_action(
         g.user_id,
@@ -181,17 +180,17 @@ def admin_assign_controllers(data, user_id):
 @require_admin
 def admin_list_controllers():
     limit, offset = parse_pagination_args()
-    with sqlite3.connect(Config.DB_PATH) as conn:
-        total = conn.execute("SELECT COUNT(*) FROM controllers").fetchone()[0]
-        rows = conn.execute("""
-            SELECT c.mac, c.first_seen, c.last_seen, c.sensor_count,
-                   uc.user_id as owner_id, u.username as owner_username
-            FROM controllers c
-            LEFT JOIN user_controllers uc ON uc.controller_mac = c.mac
-            LEFT JOIN users u ON u.id = uc.user_id
-            ORDER BY c.last_seen DESC, c.mac ASC
-            LIMIT ? OFFSET ?
-        """, (limit, offset)).fetchall()
+    conn = get_db()
+    total = conn.execute("SELECT COUNT(*) FROM controllers").fetchone()[0]
+    rows = conn.execute("""
+        SELECT c.mac, c.first_seen, c.last_seen, c.sensor_count,
+               uc.user_id as owner_id, u.username as owner_username
+        FROM controllers c
+        LEFT JOIN user_controllers uc ON uc.controller_mac = c.mac
+        LEFT JOIN users u ON u.id = uc.user_id
+        ORDER BY c.last_seen DESC, c.mac ASC
+        LIMIT ? OFFSET ?
+    """, (limit, offset)).fetchall()
     controllers = []
     for mac, first_seen, last_seen, sensor_count, owner_id, owner_username in rows:
         ctrl = {
@@ -218,12 +217,12 @@ def admin_list_controllers():
 def admin_audit():
     limit = request.args.get("limit", 50, type=int)
     offset = request.args.get("offset", 0, type=int)
-    with sqlite3.connect(Config.DB_PATH) as conn:
-        total = conn.execute("SELECT COUNT(*) FROM audit_log").fetchone()[0]
-        rows = conn.execute(
-            "SELECT id, user_id, username, action, target_type, target_id, details, created_at FROM audit_log ORDER BY created_at DESC LIMIT ? OFFSET ?",
-            (limit, offset),
-        ).fetchall()
+    conn = get_db()
+    total = conn.execute("SELECT COUNT(*) FROM audit_log").fetchone()[0]
+    rows = conn.execute(
+        "SELECT id, user_id, username, action, target_type, target_id, details, created_at FROM audit_log ORDER BY created_at DESC LIMIT ? OFFSET ?",
+        (limit, offset),
+    ).fetchall()
     logs = []
     for (
         log_id,
