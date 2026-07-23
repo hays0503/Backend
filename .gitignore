@@ -1,7 +1,27 @@
-*.db*
+# Python
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
 .pytest_cache/
-.env
 .coverage
-*.pyc
+.coverage.*
+htmlcov/
+venv/
+.venv/
+
+# База данных
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Секреты
+.env
+.env.*
+!.env.example
+
+# Артефакты
+*.egg-info/
+dist/
+build/

@@ -47,7 +47,8 @@ def post_sensor_data(data):
                 (r.address, controller_mac),
             )
             sensor_row = conn.execute(
-                "SELECT id FROM sensors WHERE sensor_address = ?", (r.address,)
+                "SELECT id FROM sensors WHERE sensor_address = ? AND controller_mac = ?",
+                (r.address, controller_mac),
             ).fetchone()
             if not sensor_row:
                 continue

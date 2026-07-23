@@ -2,6 +2,10 @@ import jwt
 import time
 import pytest
 from flask import g
+from app.config import Config
+
+
+AUDIENCE = getattr(Config, "JWT_AUDIENCE", "yescada-api")
 
 
 class TestCreateAccessToken:
@@ -15,7 +19,7 @@ class TestCreateAccessToken:
         from app.auth import create_access_token
         from app.config import Config
         token = create_access_token(42, "user")
-        payload = jwt.decode(token, Config.SECRET_KEY, algorithms=["HS256"])
+        payload = jwt.decode(token, Config.SECRET_KEY, algorithms=["HS256"], audience=AUDIENCE)
         assert payload["user_id"] == 42
         assert payload["role"] == "user"
         assert payload["type"] == "access"
@@ -25,7 +29,7 @@ class TestCreateAccessToken:
         from app.auth import create_access_token
         from app.config import Config
         token = create_access_token(1, "admin")
-        payload = jwt.decode(token, Config.SECRET_KEY, algorithms=["HS256"])
+        payload = jwt.decode(token, Config.SECRET_KEY, algorithms=["HS256"], audience=AUDIENCE)
         assert payload["role"] == "admin"
 
 
@@ -42,7 +46,7 @@ class TestCreateRefreshToken:
         from app.auth import create_refresh_token
         from app.config import Config
         token, jti = create_refresh_token(42)
-        payload = jwt.decode(token, Config.SECRET_KEY, algorithms=["HS256"])
+        payload = jwt.decode(token, Config.SECRET_KEY, algorithms=["HS256"], audience=AUDIENCE)
         assert payload["user_id"] == 42
         assert payload["type"] == "refresh"
         assert payload["jti"] == jti
@@ -59,7 +63,7 @@ class TestCreateRefreshToken:
         fixed_jti = "my-custom-jti-123"
         token, jti = create_refresh_token(1, jti=fixed_jti)
         assert jti == fixed_jti
-        payload = jwt.decode(token, Config.SECRET_KEY, algorithms=["HS256"])
+        payload = jwt.decode(token, Config.SECRET_KEY, algorithms=["HS256"], audience=AUDIENCE)
         assert payload["jti"] == fixed_jti
 
 
@@ -116,16 +120,20 @@ class TestDecodeToken:
         assert result is None
 
     def test_decode_blacklisted_refresh_token(self, app):
-        from app.auth import create_refresh_token, decode_token, revoke_refresh_token
+        from app.auth import create_refresh_token, decode_token, revoke_session, store_session
+        import time as _time
         token, jti = create_refresh_token(1)
-        revoke_refresh_token(jti)
+        store_session(jti, 1, int(_time.time()) + 86400)
+        revoke_session(jti)
         payload = decode_token(token, "refresh")
         assert payload is None
 
     def test_decode_non_blacklisted_refresh_token(self, app):
-        from app.auth import create_refresh_token, decode_token, revoke_refresh_token
+        from app.auth import create_refresh_token, decode_token, revoke_session, store_session
+        import time as _time
         token, jti = create_refresh_token(1)
-        revoke_refresh_token("some-other-jti")
+        store_session(jti, 1, int(_time.time()) + 86400)
+        revoke_session("some-other-jti")
         payload = decode_token(token, "refresh")
         assert payload is not None
 
@@ -142,14 +150,16 @@ class TestDecodeToken:
 
 class TestRevokeRefreshToken:
     def test_revoked_token_fails_decode(self, app):
-        from app.auth import create_refresh_token, decode_token, revoke_refresh_token
+        from app.auth import create_refresh_token, decode_token, revoke_session, store_session
+        import time as _time
         token, jti = create_refresh_token(1)
-        revoke_refresh_token(jti)
+        store_session(jti, 1, int(_time.time()) + 86400)
+        revoke_session(jti)
         assert decode_token(token, "refresh") is None
 
     def test_revoke_non_existent_jti_does_not_raise(self, app):
-        from app.auth import revoke_refresh_token, create_refresh_token, decode_token
-        revoke_refresh_token("nonexistent-jti")
+        from app.auth import revoke_session, create_refresh_token, decode_token
+        revoke_session("nonexistent-jti")
         token, jti = create_refresh_token(1)
         payload = decode_token(token, "refresh")
         assert payload is not None

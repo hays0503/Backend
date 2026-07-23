@@ -8,34 +8,36 @@ from .config import Config
 
 
 def create_access_token(user_id, role):
+    now = int(time.time())
     payload = {
         "user_id": user_id,
         "role": role,
         "type": "access",
         "jti": str(uuid.uuid4()),
-        "iat": int(time.time()),
-        "aud": "yescada",
-        "exp": int(time.time()) + Config.ACCESS_TOKEN_EXPIRES_SEC,
+        "iat": now,
+        "iss": getattr(Config, "JWT_ISSUER", "yescada-core"),
+        "aud": getattr(Config, "JWT_AUDIENCE", "yescada-api"),
+        "exp": now + Config.ACCESS_TOKEN_EXPIRES_SEC,
     }
     return jwt.encode(payload, Config.SECRET_KEY, algorithm="HS256")
 
 
 def create_refresh_token(user_id, jti=None):
     jti = jti or str(uuid.uuid4())
+    now = int(time.time())
     payload = {
         "user_id": user_id,
         "type": "refresh",
         "jti": jti,
-        "iat": int(time.time()),
-        "aud": "yescada",
-        "exp": int(time.time()) + Config.REFRESH_TOKEN_EXPIRES_SEC,
+        "iat": now,
+        "iss": getattr(Config, "JWT_ISSUER", "yescada-core"),
+        "aud": getattr(Config, "JWT_AUDIENCE", "yescada-api"),
+        "exp": now + Config.REFRESH_TOKEN_EXPIRES_SEC,
     }
     return jwt.encode(payload, Config.SECRET_KEY, algorithm="HS256"), jti
 
 
 def store_session(jti, user_id, expires_at, token_version=0):
-    import sqlite3
-    from .config import Config
     with sqlite3.connect(Config.DB_PATH) as conn:
         now = int(time.time())
         conn.execute(
@@ -46,20 +48,16 @@ def store_session(jti, user_id, expires_at, token_version=0):
 
 
 def is_session_revoked(jti):
-    import sqlite3
-    from .config import Config
     with sqlite3.connect(Config.DB_PATH) as conn:
         row = conn.execute(
             "SELECT revoked_at FROM auth_sessions WHERE jti = ?", (jti,)
         ).fetchone()
     if not row:
-        return True
+        return False
     return row[0] is not None
 
 
 def revoke_session(jti):
-    import sqlite3
-    from .config import Config
     now = int(time.time())
     with sqlite3.connect(Config.DB_PATH) as conn:
         conn.execute(
@@ -69,8 +67,6 @@ def revoke_session(jti):
 
 
 def revoke_all_sessions(user_id):
-    import sqlite3
-    from .config import Config
     now = int(time.time())
     with sqlite3.connect(Config.DB_PATH) as conn:
         conn.execute(
@@ -81,12 +77,15 @@ def revoke_all_sessions(user_id):
 
 def decode_token(token, expected_type):
     try:
-        payload = jwt.decode(token, Config.SECRET_KEY, algorithms=["HS256"])
+        payload = jwt.decode(
+            token,
+            Config.SECRET_KEY,
+            algorithms=["HS256"],
+            issuer=getattr(Config, "JWT_ISSUER", "yescada-core"),
+            audience=getattr(Config, "JWT_AUDIENCE", "yescada-api"),
+            leeway=getattr(Config, "JWT_CLOCK_SKEW_SEC", 30),
+        )
         if payload.get("type") != expected_type:
-            return None
-        if payload.get("aud") != "yescada":
-            return None
-        if "iat" not in payload:
             return None
         if expected_type == "refresh" and is_session_revoked(payload.get("jti")):
             return None

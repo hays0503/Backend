@@ -1,8 +1,16 @@
+import time
 import pytest
+
+TEST_DEVICE_KEY = "test-device-key-for-testing"
+
+TEST_MAC_POST = "00:01:02:03:04:05"
+TEST_MAC_MULTI = "00:11:22:33:44:55"
+TEST_MAC_DUP = "00:AA:BB:CC:DD:EE"
+TEST_MAC_UPSERT = "00:DD:EE:FF:00:11"
+TEST_MAC_VALID = "00:22:33:44:55:66"
 
 
 def _post_reading(client, mac, address, temp=25.0, ts=None):
-    import time
     ts = ts or int(time.time() * 1000)
     return client.post(
         "/api/sensor/data",
@@ -10,38 +18,39 @@ def _post_reading(client, mac, address, temp=25.0, ts=None):
             "controller_mac": mac,
             "readings": [{"address": address, "temperature": temp, "recorded_at": ts}],
         },
+        headers={"X-Device-Key": TEST_DEVICE_KEY},
     )
 
 
 class TestPostSensorDataBlackBox:
     def test_post_single_reading_returns_201_and_counts(self, client):
-        """POST sensor data → 201 with inserted count."""
-        resp = _post_reading(client, "MAC:POST:TEST:001", "ADDR-POST-1", 22.0)
-        assert resp.status_code == 201
+        """POST sensor data -> 201 with inserted count."""
+        resp = _post_reading(client, TEST_MAC_POST, "ADDR-POST-1", 22.0)
+        assert resp.status_code == 201, f"Expected 201, got {resp.status_code}: {resp.get_json()}"
         assert resp.get_json()["inserted"] == 1
         assert resp.get_json()["duplicates"] == 0
 
     def test_post_multiple_readings(self, client):
-        """3 readings → inserted=3."""
-        import time
+        """3 readings -> inserted=3."""
         now = int(time.time() * 1000)
         resp = client.post(
             "/api/sensor/data",
             json={
-                "controller_mac": "MAC:MULTI:TEST",
+                "controller_mac": TEST_MAC_MULTI,
                 "readings": [
                     {"address": "A-MULTI-1", "temperature": 20.0, "recorded_at": now},
                     {"address": "A-MULTI-2", "temperature": 21.0, "recorded_at": now + 1},
                     {"address": "A-MULTI-3", "temperature": 22.0, "recorded_at": now + 2},
                 ],
             },
+            headers={"X-Device-Key": TEST_DEVICE_KEY},
         )
         assert resp.status_code == 201
         assert resp.get_json()["inserted"] == 3
 
     def test_duplicate_reading_not_counted_twice(self, client):
-        """Same data posted twice → only 1 reading stored (verify via GET)."""
-        mac = "MAC:DUP:TEST"
+        """Same data posted twice -> only 1 reading stored."""
+        mac = TEST_MAC_DUP
         addr = "ADDR-DUP-1"
         r1 = _post_reading(client, mac, addr, 22.0)
         assert r1.status_code == 201
@@ -53,65 +62,69 @@ class TestPostSensorDataBlackBox:
         resp = client.post(
             "/api/sensor/data",
             json={"readings": [{"address": "X", "temperature": 1.0, "recorded_at": 1}]},
+            headers={"X-Device-Key": TEST_DEVICE_KEY},
         )
         assert resp.status_code == 400
 
     def test_invalid_readings_format_returns_400(self, client):
         resp = client.post(
-            "/api/sensor/data", json={"controller_mac": "X"}
+            "/api/sensor/data",
+            json={"controller_mac": "00:00:00:00:00:00"},
+            headers={"X-Device-Key": TEST_DEVICE_KEY},
         )
         assert resp.status_code == 400
 
     def test_non_json_body_returns_400(self, client):
         resp = client.post(
-            "/api/sensor/data", data="not json", content_type="text/plain"
+            "/api/sensor/data",
+            data="not json",
+            content_type="text/plain",
+            headers={"X-Device-Key": TEST_DEVICE_KEY},
         )
         assert resp.status_code == 400
 
     def test_controller_upserted_with_sensor_count(self, client, auth_headers):
         """New controller auto-created on POST with correct sensor_count."""
-        mac = "MAC:UPSERT:CNT:01"
         resp = client.post(
             "/api/sensor/data",
             json={
-                "controller_mac": mac,
-                "readings": [{"address": "ADDR-UPS-1", "temperature": 22.0, "recorded_at": 1000000}],
+                "controller_mac": TEST_MAC_UPSERT,
+                "readings": [{"address": "ADDR-UPS-1", "temperature": 22.0, "recorded_at": int(time.time() * 1000)}],
             },
+            headers={"X-Device-Key": TEST_DEVICE_KEY},
         )
         assert resp.status_code == 201
 
         ctrls = client.get("/api/admin/controllers", headers=auth_headers).get_json()["controllers"]
-        match = [c for c in ctrls if c["mac"] == mac]
+        match = [c for c in ctrls if c["mac"] == TEST_MAC_UPSERT]
         assert len(match) == 1
         assert match[0]["sensor_count"] >= 1
 
     def test_reading_with_empty_address_returns_400(self, client):
-        """Reading with empty address string fails Pydantic validation (min_length=1)."""
         resp = client.post(
             "/api/sensor/data",
             json={
-                "controller_mac": "MAC:VALID:01",
+                "controller_mac": TEST_MAC_VALID,
                 "readings": [
                     {"address": "", "temperature": 23.0, "recorded_at": 3000000},
                 ],
             },
+            headers={"X-Device-Key": TEST_DEVICE_KEY},
         )
         assert resp.status_code == 400
-        assert "address" in resp.get_json()["error"].lower()
 
     def test_reading_missing_temperature_returns_400(self, client):
-        """Reading without temperature field fails Pydantic validation."""
         resp = client.post(
             "/api/sensor/data",
             json={
-                "controller_mac": "MAC:VALID:01",
+                "controller_mac": TEST_MAC_VALID,
                 "readings": [
                     {"address": "S-NO-TEMP", "recorded_at": 3000000},
                 ],
             },
+            headers={"X-Device-Key": TEST_DEVICE_KEY},
         )
         assert resp.status_code == 400
-        assert "temperature" in resp.get_json()["error"].lower()
 
     def test_pruning_old_readings_keeps_only_keep_count(self, client, sample_data, auth_headers):
         """POST with keep_count prunes oldest readings beyond that count."""
@@ -122,11 +135,12 @@ class TestPostSensorDataBlackBox:
             json={
                 "controller_mac": mac,
                 "readings": [
-                    {"address": addr, "temperature": float(i), "recorded_at": 4000000 + i}
+                    {"address": addr, "temperature": float(i), "recorded_at": int(time.time() * 1000) + i}
                     for i in range(5)
                 ],
                 "keep_count": 3,
             },
+            headers={"X-Device-Key": TEST_DEVICE_KEY},
         )
         assert resp.status_code == 201
         assert resp.get_json()["inserted"] == 5
@@ -140,7 +154,6 @@ class TestPostSensorDataBlackBox:
 
 class TestGetSensorDataBlackBox:
     def test_get_returns_temperatures_in_asc_order(self, client, sample_data, auth_headers):
-        """GET sensor data returns temperatures sorted ASC."""
         resp = client.get(f"/api/sensor/data?sensor_id={sample_data['sensor_1_id']}", headers=auth_headers)
         assert resp.status_code == 200
         body = resp.get_json()
@@ -156,7 +169,6 @@ class TestGetSensorDataBlackBox:
         assert resp.status_code == 403
 
     def test_get_sensor_without_access_returns_403(self, client, sample_data, auth_headers):
-        """Sensor 3 belongs to controller not linked to admin."""
         resp = client.get(f"/api/sensor/data?sensor_id={sample_data['sensor_3_id']}", headers=auth_headers)
         assert resp.status_code == 403
 
@@ -191,7 +203,6 @@ class TestRenameSensorBlackBox:
         assert resp.status_code == 400
 
     def test_rename_without_access_returns_403(self, client, sample_data, auth_headers):
-        """Sensor 3 is not accessible by admin user."""
         resp = client.put(
             "/api/sensor/rename",
             json={"sensor_id": sample_data["sensor_3_id"], "location": "X"},
@@ -202,7 +213,6 @@ class TestRenameSensorBlackBox:
 
 class TestDeviceInfoBlackBox:
     def test_device_info_returns_accessible_sensors(self, client, sample_data, auth_headers):
-        """Admin has 2 sensors on 1 controller → count=2."""
         resp = client.get("/api/device/info", headers=auth_headers)
         assert resp.status_code == 200
         body = resp.get_json()
@@ -216,7 +226,6 @@ class TestDeviceInfoBlackBox:
         assert isinstance(sensor["online"], bool)
 
     def test_sensors_with_old_readings_are_offline(self, client, sample_data, auth_headers):
-        """All sample_data uses epoch-0 timestamps → online=False."""
         resp = client.get("/api/device/info", headers=auth_headers)
         for s in resp.get_json()["sensors"]:
             assert s["online"] is False

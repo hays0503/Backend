@@ -4,7 +4,7 @@ import pytest
 def _regular_user_headers(client):
     """Create a regular user and return its auth headers. Black-box."""
     admin_resp = client.post(
-        "/api/auth/login", json={"username": "admin", "password": "admin"}
+        "/api/auth/login", json={"username": "admin", "password": "Admin123456!"}
     )
     admin_token = admin_resp.get_json()["access_token"]
     admin_headers = {"Authorization": f"Bearer {admin_token}"}

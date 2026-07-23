@@ -14,6 +14,25 @@ class Config:
     REQUIRE_PASSWORD_COMPLEXITY = True
     ADMIN_SETUP_ENABLED = True
     SESSION_CLEANUP_AGE_SEC = int(os.environ.get("SESSION_CLEANUP_AGE_SEC", 2592000))
-    CORS_ORIGINS = os.environ.get(
-        "CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"
-    ).split(",")
+    CORS_ORIGINS = [
+        o.strip()
+        for o in os.environ.get(
+            "CORS_ORIGINS",
+            "http://localhost,http://localhost:5173,http://127.0.0.1:5173",
+        ).split(",")
+        if o.strip()
+    ]
+    CORS_METHODS = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+    CORS_ALLOW_HEADERS = ["Content-Type", "Authorization", "X-Requested-With"]
+    CORS_EXPOSE_HEADERS = ["X-Total-Count"]
+    CORS_SUPPORTS_CREDENTIALS = False
+    LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
+    LOG_FILE = os.environ.get("LOG_FILE", "")
+    TEMP_MIN = float(os.environ.get("YESCADA_TEMP_MIN", "-50.0"))
+    TEMP_MAX = float(os.environ.get("YESCADA_TEMP_MAX", "150.0"))
+    MAX_BATCH_SIZE = int(os.environ.get("YESCADA_MAX_BATCH_SIZE", "100"))
+    MAX_KEEP_COUNT = int(os.environ.get("YESCADA_MAX_KEEP_COUNT", "10000"))
+    TIMESTAMP_WINDOW_HOURS = int(os.environ.get("YESCADA_TIMESTAMP_WINDOW_HOURS", "24"))
+    JWT_ISSUER = os.environ.get("JWT_ISSUER", "yescada-core")
+    JWT_AUDIENCE = os.environ.get("JWT_AUDIENCE", "yescada-api")
+    JWT_CLOCK_SKEW_SEC = int(os.environ.get("JWT_CLOCK_SKEW_SEC", "30"))

@@ -1,1 +1,1 @@
-from ..conftest import TEST_PASSWORD
+TEST_PASSWORD = "Admin123456!"

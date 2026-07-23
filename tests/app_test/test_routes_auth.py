@@ -4,7 +4,7 @@ import pytest
 class TestLoginBlackBox:
     def test_valid_credentials_returns_tokens_and_user(self, client):
         resp = client.post(
-            "/api/auth/login", json={"username": "admin", "password": "admin"}
+            "/api/auth/login", json={"username": "admin", "password": "Admin123456!"}
         )
         assert resp.status_code == 200
         body = resp.get_json()
@@ -77,7 +77,7 @@ class TestAccessTokenBlackBox:
 class TestRefreshTokenBlackBox:
     def test_valid_refresh_returns_new_tokens(self, client):
         login_resp = client.post(
-            "/api/auth/login", json={"username": "admin", "password": "admin"}
+            "/api/auth/login", json={"username": "admin", "password": "Admin123456!"}
         )
         refresh_token = login_resp.get_json()["refresh_token"]
 
@@ -91,7 +91,7 @@ class TestRefreshTokenBlackBox:
 
     def test_used_refresh_token_rejected(self, client):
         login_resp = client.post(
-            "/api/auth/login", json={"username": "admin", "password": "admin"}
+            "/api/auth/login", json={"username": "admin", "password": "Admin123456!"}
         )
         refresh_token = login_resp.get_json()["refresh_token"]
 
@@ -116,7 +116,7 @@ class TestProfileBlackBox:
     def test_update_username_success(self, client, auth_headers):
         resp = client.put(
             "/api/auth/profile",
-            json={"current_password": "admin", "username": "newadmin"},
+            json={"current_password": "Admin123456!", "username": "newadmin"},
             headers=auth_headers,
         )
         assert resp.status_code == 200
@@ -127,7 +127,7 @@ class TestProfileBlackBox:
     def test_updated_username_persists(self, client, auth_headers):
         client.put(
             "/api/auth/profile",
-            json={"current_password": "admin", "username": "persistadmin"},
+            json={"current_password": "Admin123456!", "username": "persistadmin"},
             headers=auth_headers,
         )
         resp = client.get("/api/auth/me", headers=auth_headers)
@@ -136,7 +136,7 @@ class TestProfileBlackBox:
     def test_update_password_changes_auth(self, client, auth_headers):
         client.put(
             "/api/auth/profile",
-            json={"current_password": "admin", "password": "newpass"},
+            json={"current_password": "Admin123456!", "password": "newpass"},
             headers=auth_headers,
         )
         resp = client.post(
@@ -148,12 +148,12 @@ class TestProfileBlackBox:
     def test_old_password_stops_working_after_change(self, client, auth_headers):
         client.put(
             "/api/auth/profile",
-            json={"current_password": "admin", "password": "newpass"},
+            json={"current_password": "Admin123456!", "password": "newpass"},
             headers=auth_headers,
         )
         resp = client.post(
             "/api/auth/login",
-            json={"username": "admin", "password": "admin"},
+            json={"username": "admin", "password": "Admin123456!"},
         )
         assert resp.status_code == 401
 

@@ -6,6 +6,7 @@ from werkzeug.security import generate_password_hash
 from app.db import seed_admin
 
 TEST_PASSWORD = "Admin123456!"
+TEST_DEVICE_KEY = "test-device-key-for-testing"
 
 
 @pytest.fixture
@@ -17,6 +18,15 @@ def app(monkeypatch, tmp_path):
     application = create_app()
     application.config["TESTING"] = True
     seed_admin("admin", TEST_PASSWORD, db_path)
+    from app.device_auth import hash_api_key
+    key_hash = hash_api_key(TEST_DEVICE_KEY)
+    import sqlite3
+    with sqlite3.connect(db_path) as conn:
+        for mac in ["00:01:02:03:04:05", "00:11:22:33:44:55", "00:AA:BB:CC:DD:EE", "00:DD:EE:FF:00:11", "00:22:33:44:55:66", "AA:BB:CC:DD:EE:FF", "11:22:33:44:55:66"]:
+            conn.execute(
+                "INSERT OR IGNORE INTO controller_api_keys (controller_mac, key_hash, created_at) VALUES (?, ?, 0)",
+                (mac, key_hash),
+            )
     return application
 
 
@@ -77,6 +87,16 @@ def sample_data(db):
     db.execute(
         "INSERT OR IGNORE INTO user_controllers (user_id, controller_mac) VALUES (?, ?)",
         (1, "AA:BB:CC:DD:EE:FF"),
+    )
+    from app.device_auth import hash_api_key
+    key_hash = hash_api_key(TEST_DEVICE_KEY)
+    db.execute(
+        "INSERT OR IGNORE INTO controller_api_keys (controller_mac, key_hash, created_at) VALUES (?, ?, ?)",
+        ("AA:BB:CC:DD:EE:FF", key_hash, ts),
+    )
+    db.execute(
+        "INSERT OR IGNORE INTO controller_api_keys (controller_mac, key_hash, created_at) VALUES (?, ?, ?)",
+        ("11:22:33:44:55:66", key_hash, ts),
     )
     db.commit()
     return {

@@ -16,6 +16,17 @@ from ..schemas import (
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/api/admin")
 
+DEFAULT_PAGE_SIZE = 50
+MAX_PAGE_SIZE = 200
+
+
+def parse_pagination_args():
+    limit = request.args.get("limit", DEFAULT_PAGE_SIZE, type=int)
+    offset = request.args.get("offset", 0, type=int)
+    limit = max(1, min(limit, MAX_PAGE_SIZE))
+    offset = max(0, offset)
+    return limit, offset
+
 
 def _get_username(user_id):
     with sqlite3.connect(Config.DB_PATH) as conn:
@@ -29,7 +40,9 @@ def _get_username(user_id):
 @require_auth
 @require_admin
 def admin_list_users():
+    limit, offset = parse_pagination_args()
     with sqlite3.connect(Config.DB_PATH) as conn:
+        total = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
         rows = conn.execute("""
             SELECT
                 u.id,
@@ -41,7 +54,8 @@ def admin_list_users():
             LEFT JOIN user_controllers uc ON uc.user_id = u.id
             GROUP BY u.id
             ORDER BY u.id
-        """).fetchall()
+            LIMIT ? OFFSET ?
+        """, (limit, offset)).fetchall()
     users = []
     for uid, username, role, created_at, macs in rows:
         controllers = macs.split(",") if macs else []
@@ -54,7 +68,13 @@ def admin_list_users():
                 "controllers": controllers,
             }
         )
-    return ok({"users": users})
+    return ok({
+        "users": users,
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+        "has_next": offset + limit < total,
+    })
 
 
 @admin_bp.route("/users", methods=["POST"])
@@ -160,15 +180,18 @@ def admin_assign_controllers(data, user_id):
 @require_auth
 @require_admin
 def admin_list_controllers():
+    limit, offset = parse_pagination_args()
     with sqlite3.connect(Config.DB_PATH) as conn:
+        total = conn.execute("SELECT COUNT(*) FROM controllers").fetchone()[0]
         rows = conn.execute("""
             SELECT c.mac, c.first_seen, c.last_seen, c.sensor_count,
                    uc.user_id as owner_id, u.username as owner_username
             FROM controllers c
             LEFT JOIN user_controllers uc ON uc.controller_mac = c.mac
             LEFT JOIN users u ON u.id = uc.user_id
-            ORDER BY c.last_seen DESC
-        """).fetchall()
+            ORDER BY c.last_seen DESC, c.mac ASC
+            LIMIT ? OFFSET ?
+        """, (limit, offset)).fetchall()
     controllers = []
     for mac, first_seen, last_seen, sensor_count, owner_id, owner_username in rows:
         ctrl = {
@@ -180,7 +203,13 @@ def admin_list_controllers():
             "owner_username": owner_username,
         }
         controllers.append(ctrl)
-    return ok({"controllers": controllers})
+    return ok({
+        "controllers": controllers,
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+        "has_next": offset + limit < total,
+    })
 
 
 @admin_bp.route("/audit")
