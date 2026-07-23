@@ -3,7 +3,7 @@ import json
 import time
 from flask import Blueprint, request, g
 from werkzeug.security import generate_password_hash
-from ..auth import require_auth, require_admin
+from ..auth import require_auth, require_admin, revoke_all_sessions
 from ..config import Config
 from ..audit import log_action
 from ..responses import ok, error
@@ -104,6 +104,7 @@ def admin_delete_user(user_id):
         ).fetchone()[0]
         if row[1] == "admin" and admin_count <= 1:
             return error("Cannot delete the last admin", 400)
+        revoke_all_sessions(user_id)
         conn.execute("DELETE FROM user_controllers WHERE user_id = ?", (user_id,))
         conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
     username = _get_username(g.user_id)
@@ -122,6 +123,7 @@ def admin_reset_password(data, user_id):
             return error("User not found", 404)
         h = generate_password_hash(data.new_password)
         conn.execute("UPDATE users SET password_hash = ? WHERE id = ?", (h, user_id))
+    revoke_all_sessions(user_id)
     username = _get_username(g.user_id)
     log_action(g.user_id, username, "password_reset", "user", str(user_id))
     return ok()
@@ -212,7 +214,7 @@ def admin_audit():
                 "action": action,
                 "target_type": target_type,
                 "target_id": target_id,
-                "details": json.loads(details) if details else None,
+                "details": (lambda d: (json.loads(d) if d else None) if d else None)(details) if False else (json.loads(details) if details else None),
                 "created_at": created_at,
             }
         )

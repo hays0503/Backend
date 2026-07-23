@@ -1,12 +1,10 @@
 import time
 import uuid
+import sqlite3
 from functools import wraps
 from flask import request, jsonify, g
 import jwt
 from .config import Config
-
-
-_blacklist = set()
 
 
 def create_access_token(user_id, role):
@@ -35,6 +33,52 @@ def create_refresh_token(user_id, jti=None):
     return jwt.encode(payload, Config.SECRET_KEY, algorithm="HS256"), jti
 
 
+def store_session(jti, user_id, expires_at, token_version=0):
+    import sqlite3
+    from .config import Config
+    with sqlite3.connect(Config.DB_PATH) as conn:
+        now = int(time.time())
+        conn.execute(
+            "INSERT INTO auth_sessions (jti, user_id, token_version, expires_at, revoked_at, created_at) "
+            "VALUES (?, ?, ?, ?, NULL, ?)",
+            (jti, user_id, token_version, expires_at, now),
+        )
+
+
+def is_session_revoked(jti):
+    import sqlite3
+    from .config import Config
+    with sqlite3.connect(Config.DB_PATH) as conn:
+        row = conn.execute(
+            "SELECT revoked_at FROM auth_sessions WHERE jti = ?", (jti,)
+        ).fetchone()
+    if not row:
+        return True
+    return row[0] is not None
+
+
+def revoke_session(jti):
+    import sqlite3
+    from .config import Config
+    now = int(time.time())
+    with sqlite3.connect(Config.DB_PATH) as conn:
+        conn.execute(
+            "UPDATE auth_sessions SET revoked_at = ? WHERE jti = ? AND revoked_at IS NULL",
+            (now, jti),
+        )
+
+
+def revoke_all_sessions(user_id):
+    import sqlite3
+    from .config import Config
+    now = int(time.time())
+    with sqlite3.connect(Config.DB_PATH) as conn:
+        conn.execute(
+            "UPDATE auth_sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL",
+            (now, user_id),
+        )
+
+
 def decode_token(token, expected_type):
     try:
         payload = jwt.decode(token, Config.SECRET_KEY, algorithms=["HS256"])
@@ -44,17 +88,13 @@ def decode_token(token, expected_type):
             return None
         if "iat" not in payload:
             return None
-        if expected_type == "refresh" and payload.get("jti") in _blacklist:
+        if expected_type == "refresh" and is_session_revoked(payload.get("jti")):
             return None
         return payload
     except jwt.ExpiredSignatureError:
         return None
     except jwt.InvalidTokenError:
         return None
-
-
-def revoke_refresh_token(jti):
-    _blacklist.add(jti)
 
 
 def require_auth(f):

@@ -22,6 +22,7 @@ def validate_password_strength(password: str) -> tuple[bool, str | None]:
 
 
 def init_db(db_path=None):
+    # TODO(B-13): Replace with Alembic migrations
     path = db_path or Config.DB_PATH
     with sqlite3.connect(path) as conn:
         conn.execute("PRAGMA journal_mode=WAL")
@@ -104,6 +105,36 @@ def init_db(db_path=None):
                 target_id TEXT,
                 details TEXT,
                 created_at INTEGER NOT NULL
+            )
+        """)
+
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS auth_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                jti TEXT UNIQUE NOT NULL,
+                user_id INTEGER NOT NULL REFERENCES users(id),
+                token_version INTEGER NOT NULL DEFAULT 0,
+                expires_at INTEGER NOT NULL,
+                revoked_at INTEGER,
+                created_at INTEGER NOT NULL
+            )
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_auth_sessions_user
+            ON auth_sessions(user_id)
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_auth_sessions_jti
+            ON auth_sessions(jti)
+        """)
+
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS controller_api_keys (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                controller_mac TEXT NOT NULL REFERENCES controllers(mac),
+                key_hash TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                UNIQUE(controller_mac)
             )
         """)
 

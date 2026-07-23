@@ -7,12 +7,14 @@ from ..sensors import check_sensor_access, get_user_controller_macs
 from ..audit import log_action
 from ..responses import ok, error
 from ..schemas import use_schema, SensorDataBatch, RenameSensorRequest
+from ..device_auth import require_device_auth
 
 sensor_bp = Blueprint("sensor", __name__, url_prefix="/api/sensor")
 device_bp = Blueprint("device", __name__, url_prefix="/api/device")
 
 
 @sensor_bp.route("/data", methods=["POST"])
+@require_device_auth
 @use_schema(SensorDataBatch)
 def post_sensor_data(data):
     if len(data.readings) > 100:
