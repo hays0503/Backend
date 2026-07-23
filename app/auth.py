@@ -14,6 +14,9 @@ def create_access_token(user_id, role):
         "user_id": user_id,
         "role": role,
         "type": "access",
+        "jti": str(uuid.uuid4()),
+        "iat": int(time.time()),
+        "aud": "yescada",
         "exp": int(time.time()) + Config.ACCESS_TOKEN_EXPIRES_SEC,
     }
     return jwt.encode(payload, Config.SECRET_KEY, algorithm="HS256")
@@ -25,6 +28,8 @@ def create_refresh_token(user_id, jti=None):
         "user_id": user_id,
         "type": "refresh",
         "jti": jti,
+        "iat": int(time.time()),
+        "aud": "yescada",
         "exp": int(time.time()) + Config.REFRESH_TOKEN_EXPIRES_SEC,
     }
     return jwt.encode(payload, Config.SECRET_KEY, algorithm="HS256"), jti
@@ -34,6 +39,10 @@ def decode_token(token, expected_type):
     try:
         payload = jwt.decode(token, Config.SECRET_KEY, algorithms=["HS256"])
         if payload.get("type") != expected_type:
+            return None
+        if payload.get("aud") != "yescada":
+            return None
+        if "iat" not in payload:
             return None
         if expected_type == "refresh" and payload.get("jti") in _blacklist:
             return None

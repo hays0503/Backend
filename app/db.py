@@ -39,9 +39,10 @@ def init_db(db_path=None):
         conn.execute("""
             CREATE TABLE IF NOT EXISTS sensors (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                sensor_address TEXT NOT NULL UNIQUE,
+                sensor_address TEXT NOT NULL,
                 controller_mac TEXT NOT NULL REFERENCES controllers(mac),
-                location TEXT DEFAULT NULL
+                location TEXT DEFAULT NULL,
+                UNIQUE(controller_mac, sensor_address)
             )
         """)
 

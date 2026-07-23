@@ -188,6 +188,7 @@ def admin_audit():
     limit = request.args.get("limit", 50, type=int)
     offset = request.args.get("offset", 0, type=int)
     with sqlite3.connect(Config.DB_PATH) as conn:
+        total = conn.execute("SELECT COUNT(*) FROM audit_log").fetchone()[0]
         rows = conn.execute(
             "SELECT id, user_id, username, action, target_type, target_id, details, created_at FROM audit_log ORDER BY created_at DESC LIMIT ? OFFSET ?",
             (limit, offset),
@@ -215,4 +216,4 @@ def admin_audit():
                 "created_at": created_at,
             }
         )
-    return ok({"logs": logs})
+    return ok({"logs": logs, "total": total, "limit": limit, "offset": offset})
