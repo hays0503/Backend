@@ -60,22 +60,6 @@ def init_db(db_path=None):
             CREATE INDEX IF NOT EXISTS idx_readings_sensor_time
             ON readings(sensor_id, recorded_at DESC)
         """)
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_sensors_controller_mac "
-            "ON sensors(controller_mac)"
-        )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_user_controllers_controller_mac "
-            "ON user_controllers(controller_mac)"
-        )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_audit_log_created_at "
-            "ON audit_log(created_at DESC)"
-        )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_controllers_last_seen "
-            "ON controllers(last_seen DESC)"
-        )
 
         conn.execute("""
             CREATE TABLE IF NOT EXISTS users (
@@ -137,6 +121,24 @@ def init_db(db_path=None):
                 UNIQUE(controller_mac)
             )
         """)
+
+        # --- Performance indexes (B-07) ---
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_sensors_controller_mac "
+            "ON sensors(controller_mac)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_user_controllers_controller_mac "
+            "ON user_controllers(controller_mac)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_audit_log_created_at "
+            "ON audit_log(created_at DESC)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_controllers_last_seen "
+            "ON controllers(last_seen DESC)"
+        )
 
     return path
 

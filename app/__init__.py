@@ -1,5 +1,5 @@
 import os
-from flask import Flask
+from flask import Flask, g, request
 from flask_cors import CORS
 from .config import Config
 
