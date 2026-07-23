@@ -1,9 +1,25 @@
+import re
 import sqlite3
 import time
 import json
 from flask import g
 from werkzeug.security import generate_password_hash
 from .config import Config
+
+
+def validate_password_strength(password: str) -> list[str]:
+    errors = []
+    if len(password) < 12:
+        errors.append("Password must be at least 12 characters")
+    if not re.search(r"[a-z]", password):
+        errors.append("Password must contain at least one lowercase letter")
+    if not re.search(r"[A-Z]", password):
+        errors.append("Password must contain at least one uppercase letter")
+    if not re.search(r"\d", password):
+        errors.append("Password must contain at least one digit")
+    if not re.search(r"[!@#$%^&*()_+\-=\[\]{};':\"\\|,.<>\/?]", password):
+        errors.append("Password must contain at least one special character")
+    return errors
 
 
 def init_db(db_path=None):
@@ -75,23 +91,39 @@ def init_db(db_path=None):
             )
         """)
 
-        row = conn.execute("SELECT COUNT(*) FROM users").fetchone()
-        if row[0] == 0:
-            h = generate_password_hash("admin")
-            now = int(time.time() * 1000)
-            conn.execute(
-                "INSERT INTO users (username, password_hash, role, created_at) VALUES (?, ?, 'admin', ?)",
-                ("admin", h, now),
-            )
-            user_id = conn.execute(
-                "SELECT id FROM users WHERE username = ?", ("admin",)
-            ).fetchone()[0]
-            conn.execute(
-                "INSERT INTO audit_log (user_id, username, action, target_type, target_id, details, created_at) VALUES (?, 'system', 'admin_seeded', 'user', 'admin', ?, ?)",
-                (user_id, json.dumps({"username": "admin"}), now),
-            )
-
     return path
+
+
+def seed_admin(username, password, db_path=None):
+    """Create an admin user if no users exist yet.
+
+    Returns (True, None) if the admin was created,
+    (False, error_message) if validation fails or users already exist.
+    """
+    if not username or not password:
+        return False, "Username and password are required"
+    errors = validate_password_strength(password)
+    if errors:
+        return False, "; ".join(errors)
+    path = db_path or Config.DB_PATH
+    with sqlite3.connect(path) as conn:
+        row = conn.execute("SELECT COUNT(*) FROM users").fetchone()
+        if row[0] > 0:
+            return False, "Users already exist"
+        h = generate_password_hash(password)
+        now = int(time.time() * 1000)
+        conn.execute(
+            "INSERT INTO users (username, password_hash, role, created_at) VALUES (?, ?, 'admin', ?)",
+            (username, h, now),
+        )
+        user_id = conn.execute(
+            "SELECT id FROM users WHERE username = ?", (username,)
+        ).fetchone()[0]
+        conn.execute(
+            "INSERT INTO audit_log (user_id, username, action, target_type, target_id, details, created_at) VALUES (?, 'system', 'admin_seeded', 'user', ?, ?, ?)",
+            (user_id, username, json.dumps({"username": username}), now),
+        )
+    return True, None
 
 
 def get_db():

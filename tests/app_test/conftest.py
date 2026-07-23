@@ -1,5 +1,6 @@
 import sqlite3
 import pytest
+from app.db import seed_admin
 
 
 @pytest.fixture
@@ -9,6 +10,7 @@ def app(monkeypatch, tmp_path):
     from app import create_app
     application = create_app()
     application.config["TESTING"] = True
+    seed_admin("admin", "admin", db_path)
     return application
 
 
