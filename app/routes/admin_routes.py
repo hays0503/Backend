@@ -215,8 +215,7 @@ def admin_list_controllers():
 @require_auth
 @require_admin
 def admin_audit():
-    limit = request.args.get("limit", 50, type=int)
-    offset = request.args.get("offset", 0, type=int)
+    limit, offset = parse_pagination_args()
     conn = get_db()
     total = conn.execute("SELECT COUNT(*) FROM audit_log").fetchone()[0]
     rows = conn.execute(
