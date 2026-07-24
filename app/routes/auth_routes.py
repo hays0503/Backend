@@ -1,3 +1,4 @@
+import time
 from flask import Blueprint, g
 from werkzeug.security import check_password_hash, generate_password_hash
 from ..auth import (
@@ -32,8 +33,7 @@ def login(data):
     user_id, username, _, role = row
     access_token = create_access_token(user_id, role)
     refresh_token, jti = create_refresh_token(user_id)
-    import time as _time
-    expires_at = int(_time.time()) + Config.REFRESH_TOKEN_EXPIRES_SEC
+    expires_at = int(time.time()) + Config.REFRESH_TOKEN_EXPIRES_SEC
     store_session(jti, user_id, expires_at)
     log_action(user_id, username, "login")
     return ok(
@@ -62,8 +62,7 @@ def refresh(data):
         return error("User not found", 401)
     access_token = create_access_token(row[0], row[2])
     refresh_token, new_jti = create_refresh_token(row[0])
-    import time as _time
-    expires_at = int(_time.time()) + Config.REFRESH_TOKEN_EXPIRES_SEC
+    expires_at = int(time.time()) + Config.REFRESH_TOKEN_EXPIRES_SEC
     store_session(new_jti, row[0], expires_at)
     return ok({"access_token": access_token, "refresh_token": refresh_token})
 

@@ -1,10 +1,11 @@
 import time
 import uuid
 from functools import wraps
-from flask import request, jsonify, g
+from flask import request, g
 import jwt
 from .config import Config
 from .db import get_db
+from .responses import error
 
 
 def create_access_token(user_id, role):
@@ -101,11 +102,11 @@ def require_auth(f):
     def wrapper(*args, **kwargs):
         auth = request.headers.get("Authorization", "")
         if not auth.startswith("Bearer "):
-            return jsonify({"error": "Missing token"}), 401
+            return error("Missing token", 401)
         token = auth[7:]
         payload = decode_token(token, "access")
         if not payload:
-            return jsonify({"error": "Invalid or expired token"}), 401
+            return error("Invalid or expired token", 401)
         g.user_id = payload["user_id"]
         g.user_role = payload["role"]
         return f(*args, **kwargs)
@@ -117,7 +118,7 @@ def require_admin(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
         if getattr(g, "user_role", None) != "admin":
-            return jsonify({"error": "Admin only"}), 403
+            return error("Admin only", 403)
         return f(*args, **kwargs)
 
     return wrapper

@@ -1,3 +1,4 @@
+import sqlite3
 import time
 from flask import Blueprint, request, g
 from ..auth import require_auth
@@ -22,7 +23,6 @@ def post_sensor_data(data):
     readings = data.readings
     inserted = 0
     duplicates = 0
-    import sqlite3 as _sqlite3
     conn = get_db()
     conn.execute(
         """
@@ -55,7 +55,7 @@ def post_sensor_data(data):
                 inserted += 1
             else:
                 duplicates += 1
-        except _sqlite3.Error:
+        except sqlite3.Error:
             conn.rollback()
             return error("Database error while storing readings", 500)
     sensor_ids = conn.execute(
