@@ -1,9 +1,16 @@
 import sqlite3
+import time
 import pytest
 from app.db import seed_admin
 
 TEST_PASSWORD = "Admin123456!"
 TEST_DEVICE_KEY = "test-device-key-for-testing"
+
+APP_MACS = [
+    "00:01:02:03:04:05", "00:11:22:33:44:55", "00:AA:BB:CC:DD:EE",
+    "00:DD:EE:FF:00:11", "00:22:33:44:55:66", "AA:BB:CC:DD:EE:FF",
+    "11:22:33:44:55:66", "66:77:88:99:AA:BB",
+]
 
 
 @pytest.fixture
@@ -17,14 +24,24 @@ def app(monkeypatch, tmp_path):
     seed_admin("admin", TEST_PASSWORD, db_path)
     from app.device_auth import hash_api_key
     key_hash = hash_api_key(TEST_DEVICE_KEY)
-    import sqlite3
+    ts = int(time.time())
     with sqlite3.connect(db_path) as conn:
-        for mac in ["00:01:02:03:04:05", "00:11:22:33:44:55", "00:AA:BB:CC:DD:EE", "00:DD:EE:FF:00:11", "00:22:33:44:55:66", "AA:BB:CC:DD:EE:FF", "11:22:33:44:55:66"]:
+        for mac in APP_MACS:
+            conn.execute(
+                "INSERT OR IGNORE INTO controllers (mac, first_seen, last_seen, sensor_count) VALUES (?, ?, ?, ?)",
+                (mac, ts, ts, 0),
+            )
             conn.execute(
                 "INSERT OR IGNORE INTO controller_api_keys (controller_mac, key_hash, created_at) VALUES (?, ?, 0)",
                 (mac, key_hash),
             )
     return application
+
+
+@pytest.fixture(autouse=True)
+def _app_context(app):
+    with app.app_context():
+        yield
 
 
 @pytest.fixture
@@ -45,12 +62,9 @@ def auth_headers(client):
 
 @pytest.fixture
 def db(app):
-    from app.config import Config
-    conn = sqlite3.connect(Config.DB_PATH)
-    conn.execute("PRAGMA foreign_keys=ON")
-    conn.row_factory = sqlite3.Row
+    from app.db import get_db
+    conn = get_db()
     yield conn
-    conn.close()
 
 
 @pytest.fixture
