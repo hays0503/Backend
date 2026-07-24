@@ -1,5 +1,4 @@
 import time
-import pytest
 
 TEST_DEVICE_KEY = "test-device-key-for-testing"
 

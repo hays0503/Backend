@@ -1,6 +1,5 @@
 import jwt
 import time
-import pytest
 from flask import g
 from app.config import Config
 

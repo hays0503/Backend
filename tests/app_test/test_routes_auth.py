@@ -1,6 +1,3 @@
-import pytest
-
-
 class TestLoginBlackBox:
     def test_valid_credentials_returns_tokens_and_user(self, client):
         resp = client.post(

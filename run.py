@@ -1,7 +1,6 @@
 import getpass
 from app import create_app
 from app.db import seed_admin, validate_password_strength
-from app.config import Config
 
 app = create_app()
 

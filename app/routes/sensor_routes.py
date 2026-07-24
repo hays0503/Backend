@@ -1,5 +1,5 @@
 import time
-from flask import Blueprint, request, jsonify, g
+from flask import Blueprint, request, g
 from ..auth import require_auth
 from ..sensors import check_sensor_access, get_user_controller_macs
 from ..audit import log_action
@@ -16,13 +16,6 @@ device_bp = Blueprint("device", __name__, url_prefix="/api/device")
 @require_device_auth
 @use_schema(SensorDataBatch)
 def post_sensor_data(data):
-    if len(data.readings) > 100:
-        return error("Batch too large (max 100 readings)", 400)
-
-    for i, r in enumerate(data.readings):
-        if not (-50 <= r.temperature <= 150):
-            return error(f"Reading {i}: temperature {r.temperature} out of range (-50..150)", 400)
-
     controller_mac = data.controller_mac
     keep_count = data.keep_count
     now = int(time.time() * 1000)

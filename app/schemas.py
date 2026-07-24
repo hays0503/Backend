@@ -2,7 +2,7 @@ import math
 import re
 from functools import wraps
 from typing import Optional
-from flask import request, jsonify, current_app
+from flask import request, current_app
 from pydantic import BaseModel, Field, ValidationError as PydanticValidationError, field_validator, model_validator
 
 MAC_RE = re.compile(r"^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$")
