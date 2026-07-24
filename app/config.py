@@ -30,7 +30,7 @@ class Config:
     LOG_FILE = os.environ.get("LOG_FILE", "")
     TEMP_MIN = float(os.environ.get("YESCADA_TEMP_MIN", "-50.0"))
     TEMP_MAX = float(os.environ.get("YESCADA_TEMP_MAX", "150.0"))
-    MAX_BATCH_SIZE = int(os.environ.get("YESCADA_MAX_BATCH_SIZE", "100"))
+    MAX_BATCH_SIZE = int(os.environ.get("YESCADA_MAX_BATCH_SIZE", "500"))
     MAX_KEEP_COUNT = int(os.environ.get("YESCADA_MAX_KEEP_COUNT", "10000"))
     TIMESTAMP_WINDOW_HOURS = int(os.environ.get("YESCADA_TIMESTAMP_WINDOW_HOURS", "24"))
     JWT_ISSUER = os.environ.get("JWT_ISSUER", "yescada-core")
