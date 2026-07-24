@@ -1,8 +1,5 @@
 import sqlite3
-import json
-import time
 import pytest
-from werkzeug.security import generate_password_hash
 from app.db import seed_admin
 
 TEST_PASSWORD = "Admin123456!"
@@ -108,4 +105,49 @@ def sample_data(db):
         "user_admin_id": 1,
         "temps_sensor_1": [22.5, 23.0],
         "temps_sensor_2": [19.8],
+    }
+
+
+MAC_A1 = "00:AA:00:00:00:01"
+MAC_A2 = "00:AA:00:00:00:02"
+MAC_B1 = "00:BB:00:00:00:01"
+MAC_B2 = "00:BB:00:00:00:02"
+MAC_C1 = "00:CC:00:00:00:01"
+MAC_C2 = "00:CC:00:00:00:02"
+ALL_MULTI_MACS = [MAC_A1, MAC_A2, MAC_B1, MAC_B2, MAC_C1, MAC_C2]
+
+
+@pytest.fixture
+def multi_user_data(client, auth_headers, db):
+    from app.device_auth import hash_api_key
+    key_hash = hash_api_key(TEST_DEVICE_KEY)
+
+    for mac in ALL_MULTI_MACS:
+        db.execute(
+            "INSERT OR IGNORE INTO controllers (mac, first_seen, last_seen, sensor_count) VALUES (?, ?, ?, ?)",
+            (mac, 0, 0, 1),
+        )
+        db.execute(
+            "INSERT OR IGNORE INTO controller_api_keys (controller_mac, key_hash, created_at) VALUES (?, ?, ?)",
+            (mac, key_hash, 0),
+        )
+    db.commit()
+
+    users = {}
+    for name in ["alice", "bob", "charlie"]:
+        resp = client.post(
+            "/api/admin/users",
+            json={"username": name, "password": "pass12345678!"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201
+        users[name] = resp.get_json()["id"]
+
+    return {
+        "users": users,
+        "macs": {
+            "alice": [MAC_A1, MAC_A2],
+            "bob": [MAC_B1, MAC_B2],
+            "charlie": [MAC_C1, MAC_C2],
+        },
     }
