@@ -16,7 +16,9 @@ class TestLoginBlackBox:
             "/api/auth/login", json={"username": "admin", "password": "wrong"}
         )
         assert resp.status_code == 401
-        assert resp.get_json()["error"] == "Invalid credentials"
+        err = resp.get_json()["error"]
+        msg = err["message"] if isinstance(err, dict) else err
+        assert msg == "Invalid credentials"
 
     def test_wrong_username_returns_401(self, client):
         resp = client.post(
@@ -161,7 +163,9 @@ class TestProfileBlackBox:
             headers=auth_headers,
         )
         assert resp.status_code == 400
-        assert "incorrect" in resp.get_json()["error"].lower()
+        err = resp.get_json()["error"]
+        msg = err["message"] if isinstance(err, dict) else err
+        assert "incorrect" in msg.lower()
 
     def test_update_missing_current_password_returns_400(self, client, auth_headers):
         resp = client.put(

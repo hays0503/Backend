@@ -1,13 +1,11 @@
-import sqlite3
-import time
 from flask import Blueprint, request, g
 from ..auth import require_auth
-from ..sensors import check_sensor_access, get_user_controller_macs
 from ..audit import log_action
-from ..responses import ok, error
+from ..responses import ok
 from ..schemas import use_schema, SensorDataBatch, RenameSensorRequest
 from ..device_auth import require_device_auth
-from ..db import get_db
+from ..services import sensor_service
+from ..services.user_service import _get_username
 
 sensor_bp = Blueprint("sensor", __name__, url_prefix="/api/sensor")
 device_bp = Blueprint("device", __name__, url_prefix="/api/device")
@@ -17,63 +15,10 @@ device_bp = Blueprint("device", __name__, url_prefix="/api/device")
 @require_device_auth
 @use_schema(SensorDataBatch)
 def post_sensor_data(data):
-    controller_mac = data.controller_mac
-    keep_count = data.keep_count
-    now = int(time.time() * 1000)
-    readings = data.readings
-    inserted = 0
-    duplicates = 0
-    conn = get_db()
-    conn.execute(
-        """
-        INSERT INTO controllers (mac, first_seen, last_seen, sensor_count)
-        VALUES (?, ?, ?, ?)
-        ON CONFLICT(mac) DO UPDATE SET
-            last_seen = excluded.last_seen,
-            sensor_count = excluded.sensor_count
-    """,
-        (controller_mac, now, now, len(readings)),
+    result = sensor_service.ingest_readings(
+        data.controller_mac, data.readings, data.keep_count
     )
-    for r in readings:
-        conn.execute(
-            "INSERT OR IGNORE INTO sensors (sensor_address, controller_mac) VALUES (?, ?)",
-            (r.address, controller_mac),
-        )
-        sensor_row = conn.execute(
-            "SELECT id FROM sensors WHERE sensor_address = ? AND controller_mac = ?",
-            (r.address, controller_mac),
-        ).fetchone()
-        if not sensor_row:
-            continue
-        sensor_id = sensor_row[0]
-        try:
-            cur = conn.execute(
-                "INSERT OR IGNORE INTO readings (sensor_id, temperature, recorded_at) VALUES (?, ?, ?)",
-                (sensor_id, r.temperature, r.recorded_at),
-            )
-            if cur.rowcount > 0:
-                inserted += 1
-            else:
-                duplicates += 1
-        except sqlite3.Error:
-            conn.rollback()
-            return error("Database error while storing readings", 500)
-    sensor_ids = conn.execute(
-        "SELECT id FROM sensors WHERE controller_mac = ?", (controller_mac,)
-    ).fetchall()
-    for (sid,) in sensor_ids:
-        conn.execute(
-            """
-            DELETE FROM readings WHERE sensor_id = ? AND id NOT IN (
-                SELECT id FROM readings WHERE sensor_id = ? ORDER BY recorded_at DESC LIMIT ?
-            )
-        """,
-            (sid, sid, keep_count),
-        )
-    return ok(
-        {"inserted": inserted, "duplicates": duplicates, "server_time": now},
-        201,
-    )
+    return ok(result, 201)
 
 
 @sensor_bp.route("/data", methods=["GET"])
@@ -81,45 +26,18 @@ def post_sensor_data(data):
 def get_sensor_data():
     sensor_id = request.args.get("sensor_id", type=int)
     if not sensor_id:
-        return error("sensor_id is required", 400)
-    sensor = check_sensor_access(sensor_id, g.user_id)
-    if sensor is None:
-        return error("Access denied", 403)
-    conn = get_db()
-    rows = conn.execute(
-        """
-        SELECT temperature
-        FROM (
-            SELECT temperature, recorded_at
-            FROM readings
-            WHERE sensor_id = ?
-            ORDER BY recorded_at DESC
-            LIMIT 100
-        )
-        ORDER BY recorded_at ASC
-        """,
-        (sensor_id,),
-    ).fetchall()
-    temps = [r[0] for r in rows]
-    return ok({"data": temps, "address": sensor[1]})
+        from ..errors import ValidationError
+        raise ValidationError("sensor_id is required")
+    result = sensor_service.get_recent_readings(sensor_id, g.user_id)
+    return ok(result)
 
 
 @sensor_bp.route("/rename", methods=["PUT"])
 @require_auth
 @use_schema(RenameSensorRequest)
 def rename_sensor(data):
-    sensor = check_sensor_access(data.sensor_id, g.user_id)
-    if sensor is None:
-        return error("Access denied", 403)
-    conn = get_db()
-    conn.execute(
-        "UPDATE sensors SET location = ? WHERE id = ?",
-        (data.location, data.sensor_id),
-    )
-    row = conn.execute(
-        "SELECT username FROM users WHERE id = ?", (g.user_id,)
-    ).fetchone()
-    username = row[0] if row else "unknown"
+    sensor_service.rename_sensor(data.sensor_id, data.location, g.user_id)
+    username = _get_username(g.user_id)
     log_action(
         g.user_id,
         username,
@@ -134,32 +52,5 @@ def rename_sensor(data):
 @device_bp.route("/info")
 @require_auth
 def device_info():
-    macs = get_user_controller_macs(g.user_id)
-    if not macs:
-        return ok({"count": 0, "sensors": []})
-    placeholders = ",".join("?" for _ in macs)
-    now_ms = int(time.time() * 1000)
-    conn = get_db()
-    rows = conn.execute(
-        f"""
-        SELECT s.id, s.sensor_address, s.location, s.controller_mac, MAX(r.recorded_at) as last_reading
-        FROM sensors s
-        LEFT JOIN readings r ON r.sensor_id = s.id
-        WHERE s.controller_mac IN ({placeholders})
-        GROUP BY s.id
-    """,
-        macs,
-    ).fetchall()
-    sensors = []
-    for sid, address, location, controller_mac, last_reading in rows:
-        online = last_reading is not None and (now_ms - last_reading) < 30000
-        sensors.append(
-            {
-                "sensor_id": sid,
-                "address": address,
-                "location": location if location else address,
-                "online": online,
-                "controller_mac": controller_mac,
-            }
-        )
-    return ok({"count": len(sensors), "sensors": sensors})
+    result = sensor_service.get_device_info(g.user_id)
+    return ok(result)

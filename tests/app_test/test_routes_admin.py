@@ -1,6 +1,3 @@
-import pytest
-
-
 def _regular_user_headers(client):
     """Create a regular user and return its auth headers. Black-box."""
     admin_resp = client.post(
@@ -131,7 +128,9 @@ class TestAdminDeleteUserBlackBox:
     def test_delete_last_admin_returns_400(self, client, auth_headers):
         resp = client.delete("/api/admin/users/1", headers=auth_headers)
         assert resp.status_code == 400
-        assert "last admin" in resp.get_json()["error"].lower()
+        err = resp.get_json()["error"]
+        msg = err["message"] if isinstance(err, dict) else err
+        assert "last admin" in msg.lower()
 
 
 class TestAdminResetPasswordBlackBox:
@@ -308,3 +307,201 @@ class TestAuthorizationBlackBox:
         headers = _regular_user_headers(client)
         resp = client.get("/api/admin/controllers", headers=headers)
         assert resp.status_code == 403
+
+
+class TestMultiUserMultiController:
+    def test_assign_multiple_controllers_to_each_user(self, client, multi_user_data, auth_headers):
+        users = multi_user_data["users"]
+        macs = multi_user_data["macs"]
+
+        for name, user_id in users.items():
+            resp = client.put(
+                f"/api/admin/users/{user_id}/controllers",
+                json={"controllers": macs[name]},
+                headers=auth_headers,
+            )
+            assert resp.status_code == 200
+
+    def test_list_users_shows_correct_controllers_per_user(self, client, multi_user_data, auth_headers):
+        users = multi_user_data["users"]
+        macs = multi_user_data["macs"]
+
+        for name, user_id in users.items():
+            client.put(
+                f"/api/admin/users/{user_id}/controllers",
+                json={"controllers": macs[name]},
+                headers=auth_headers,
+            )
+
+        resp = client.get("/api/admin/users", headers=auth_headers)
+        assert resp.status_code == 200
+        for user in resp.get_json()["users"]:
+            name = user["username"]
+            if name in macs:
+                assert sorted(user["controllers"]) == sorted(macs[name])
+
+    def test_list_controllers_shows_correct_owner(self, client, multi_user_data, auth_headers):
+        users = multi_user_data["users"]
+        macs = multi_user_data["macs"]
+
+        for name, user_id in users.items():
+            client.put(
+                f"/api/admin/users/{user_id}/controllers",
+                json={"controllers": macs[name]},
+                headers=auth_headers,
+            )
+
+        resp = client.get("/api/admin/controllers", headers=auth_headers)
+        assert resp.status_code == 200
+        ctrl_map = {c["mac"]: c for c in resp.get_json()["controllers"]}
+
+        for name, user_macs in macs.items():
+            for mac in user_macs:
+                assert mac in ctrl_map, f"MAC {mac} not found"
+                assert ctrl_map[mac]["owner_username"] == name
+
+    def test_reassign_controller_between_users(self, client, multi_user_data, auth_headers):
+        users = multi_user_data["users"]
+        macs = multi_user_data["macs"]
+        alice_id = users["alice"]
+        bob_id = users["bob"]
+        mac_to_move = macs["alice"][0]
+
+        client.put(
+            f"/api/admin/users/{alice_id}/controllers",
+            json={"controllers": macs["alice"]},
+            headers=auth_headers,
+        )
+        client.put(
+            f"/api/admin/users/{bob_id}/controllers",
+            json={"controllers": macs["bob"]},
+            headers=auth_headers,
+        )
+
+        bob_new = macs["bob"] + [mac_to_move]
+        client.put(
+            f"/api/admin/users/{bob_id}/controllers",
+            json={"controllers": bob_new},
+            headers=auth_headers,
+        )
+        client.put(
+            f"/api/admin/users/{alice_id}/controllers",
+            json={"controllers": [macs["alice"][1]]},
+            headers=auth_headers,
+        )
+
+        resp_users = client.get("/api/admin/users", headers=auth_headers)
+        for u in resp_users.get_json()["users"]:
+            if u["username"] == "alice":
+                assert mac_to_move not in u["controllers"]
+                assert macs["alice"][1] in u["controllers"]
+            elif u["username"] == "bob":
+                assert mac_to_move in u["controllers"]
+
+    def test_unassign_all_controllers_from_user(self, client, multi_user_data, auth_headers):
+        users = multi_user_data["users"]
+        macs = multi_user_data["macs"]
+        charlie_id = users["charlie"]
+
+        client.put(
+            f"/api/admin/users/{charlie_id}/controllers",
+            json={"controllers": macs["charlie"]},
+            headers=auth_headers,
+        )
+        client.put(
+            f"/api/admin/users/{charlie_id}/controllers",
+            json={"controllers": []},
+            headers=auth_headers,
+        )
+
+        resp = client.get("/api/admin/users", headers=auth_headers)
+        for u in resp.get_json()["users"]:
+            if u["username"] == "charlie":
+                assert u["controllers"] == []
+
+    def test_same_controller_appears_for_last_assigned_user(self, client, multi_user_data, auth_headers):
+        users = multi_user_data["users"]
+        macs = multi_user_data["macs"]
+        alice_id = users["alice"]
+        bob_id = users["bob"]
+        shared_mac = macs["alice"][0]
+
+        client.put(
+            f"/api/admin/users/{alice_id}/controllers",
+            json={"controllers": [shared_mac]},
+            headers=auth_headers,
+        )
+        client.put(
+            f"/api/admin/users/{bob_id}/controllers",
+            json={"controllers": [shared_mac, macs["bob"][0]]},
+            headers=auth_headers,
+        )
+
+        resp = client.get("/api/admin/users", headers=auth_headers)
+        alice_controllers = []
+        bob_controllers = []
+        for u in resp.get_json()["users"]:
+            if u["username"] == "alice":
+                alice_controllers = u["controllers"]
+            elif u["username"] == "bob":
+                bob_controllers = u["controllers"]
+
+        assert shared_mac in bob_controllers
+        assert macs["bob"][0] in bob_controllers
+
+    def test_replace_controllers_does_not_append(self, client, multi_user_data, auth_headers):
+        users = multi_user_data["users"]
+        macs = multi_user_data["macs"]
+        alice_id = users["alice"]
+        replacement_mac = macs["charlie"][0]
+
+        client.put(
+            f"/api/admin/users/{alice_id}/controllers",
+            json={"controllers": macs["alice"]},
+            headers=auth_headers,
+        )
+        client.put(
+            f"/api/admin/users/{alice_id}/controllers",
+            json={"controllers": [replacement_mac]},
+            headers=auth_headers,
+        )
+
+        resp = client.get("/api/admin/users", headers=auth_headers)
+        for u in resp.get_json()["users"]:
+            if u["username"] == "alice":
+                assert replacement_mac in u["controllers"]
+                for old_mac in macs["alice"]:
+                    assert old_mac not in u["controllers"]
+
+    def test_admin_user_can_have_controllers(self, client, multi_user_data, auth_headers):
+        macs = multi_user_data["macs"]
+
+        resp = client.put(
+            "/api/admin/users/1/controllers",
+            json={"controllers": [macs["alice"][0]]},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+
+        resp = client.get("/api/auth/me", headers=auth_headers)
+        assert macs["alice"][0] in resp.get_json()["controllers"]
+
+    def test_controller_list_total_count_matches(self, client, multi_user_data, auth_headers):
+        users = multi_user_data["users"]
+        macs = multi_user_data["macs"]
+
+        for name, user_id in users.items():
+            client.put(
+                f"/api/admin/users/{user_id}/controllers",
+                json={"controllers": macs[name]},
+                headers=auth_headers,
+            )
+
+        resp = client.get("/api/admin/controllers", headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.get_json()["total"] >= 6
+
+        all_macs = [c["mac"] for c in resp.get_json()["controllers"]]
+        from tests.conftest import ALL_MULTI_MACS
+        for mac in ALL_MULTI_MACS:
+            assert mac in all_macs
