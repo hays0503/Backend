@@ -1,6 +1,7 @@
 """B-24: spec_version handshake + sentinel rejection (X-04).
 
-- `spec_version` is accepted by the schema and reflected in responses.
+- `spec_version` is accepted from the body or the `X-Temperature-Spec-Version`
+  header and reflected back in the response headers.
 - Sentinel values (e.g. -127.0 disconnected) are rejected at ingestion.
 - Values outside the shared spec valid range are rejected.
 """
@@ -44,6 +45,7 @@ class TestSpecVersionHandshake:
             headers=device_headers,
         )
         assert resp.status_code in (200, 201)
+        assert resp.headers.get("X-Temperature-Spec-Version") == spec.SPEC_VERSION
 
     def test_payload_without_spec_version_accepted(
         self, app, client, device_key_data, device_headers
@@ -52,6 +54,16 @@ class TestSpecVersionHandshake:
         body.pop("spec_version")
         resp = client.post("/api/sensor/data", json=body, headers=device_headers)
         assert resp.status_code in (200, 201)
+
+    def test_header_spec_version_accepted(
+        self, app, client, device_key_data, device_headers
+    ):
+        body = _batch()
+        body.pop("spec_version")
+        headers = {**device_headers, "X-Temperature-Spec-Version": spec.SPEC_VERSION}
+        resp = client.post("/api/sensor/data", json=body, headers=headers)
+        assert resp.status_code in (200, 201)
+        assert resp.headers.get("X-Temperature-Spec-Version") == spec.SPEC_VERSION
 
 
 class TestSentinelRejection:

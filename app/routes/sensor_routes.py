@@ -18,19 +18,24 @@ device_bp = Blueprint("device", __name__, url_prefix="/api/device")
 @use_schema(SensorDataBatch)
 @require_device_auth
 def post_sensor_data(data):
-    if data.spec_version is not None and data.spec_version != spec.SPEC_VERSION:
-        from flask import current_app
+    from flask import current_app
 
+    client_version = data.spec_version or request.headers.get(
+        "X-Temperature-Spec-Version"
+    )
+    if client_version is not None and client_version != spec.SPEC_VERSION:
         current_app.logger.warning(
             "spec_version mismatch: client=%s backend=%s mac=%s",
-            data.spec_version,
+            client_version,
             spec.SPEC_VERSION,
             data.controller_mac,
         )
     result = sensor_service.ingest_readings(
         data.controller_mac, data.readings, data.keep_count
     )
-    return ok(result, 201)
+    resp = ok(result, 201)
+    resp[0].headers["X-Temperature-Spec-Version"] = spec.SPEC_VERSION
+    return resp
 
 
 @sensor_bp.route("/data", methods=["GET"])
