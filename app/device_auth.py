@@ -1,11 +1,13 @@
 import hashlib
 import hmac
+import logging
 import secrets
 import time
 from functools import wraps
 
-from flask import request, g
+from flask import g, request
 
+from .config import Config
 from .db import get_db
 from .responses import error
 
@@ -93,15 +95,32 @@ def get_api_key_info(db, controller_mac):
 def require_device_auth(f):
     @wraps(f)
     def decorated(*args, **kwargs):
+        log_only = getattr(Config, "DEVICE_AUTH_LOG_ONLY", False)
+
+        def accept_log_only(reason):
+            if not log_only:
+                return None
+            logging.warning("device auth log-only: %s accepted", reason)
+            return f(*args, **kwargs)
+
         device_key = request.headers.get("X-Device-Key")
         if not device_key:
+            accepted = accept_log_only("missing X-Device-Key header")
+            if accepted is not None:
+                return accepted
             return error("MISSING_DEVICE_KEY", 401)
 
         if not request.is_json:
+            accepted = accept_log_only("non-JSON request body")
+            if accepted is not None:
+                return accepted
             return error("MISSING_DEVICE_KEY", 401)
         body = request.get_json(silent=True) or {}
         controller_mac = body.get("controller_mac")
         if not controller_mac:
+            accepted = accept_log_only("missing controller_mac")
+            if accepted is not None:
+                return accepted
             return error("MISSING_DEVICE_KEY", 401)
 
         conn = get_db()
@@ -111,6 +130,11 @@ def require_device_auth(f):
             (controller_mac,),
         ).fetchone()
         if not row or not verify_device_key(device_key, row[0], row[1] or ""):
+            accepted = accept_log_only(
+                f"invalid device key for controller {controller_mac}"
+            )
+            if accepted is not None:
+                return accepted
             return error("INVALID_DEVICE_KEY", 401)
 
         g.device_mac = controller_mac

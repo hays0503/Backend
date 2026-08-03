@@ -70,3 +70,8 @@ class Config:
     CSRF_HEADER = os.environ.get("CSRF_HEADER", "X-CSRF-Token")
     CSRF_TEST_MARKER = "X-YESCADA-TEST"
     CSRF_EXEMPT_PATHS = ["/api/auth/login", "/api/auth/refresh"]
+    DEVICE_AUTH_LOG_ONLY = os.environ.get("DEVICE_AUTH_LOG_ONLY", "0").lower() in (
+        "1",
+        "true",
+        "yes",
+    )

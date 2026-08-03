@@ -65,7 +65,7 @@ class TestDeviceKeyRequired:
         )
 
     def test_revoked_key_rejected(self, app, client, db):
-        from app.device_auth import set_api_key, remove_api_key
+        from app.device_auth import remove_api_key, set_api_key
 
         plain_key = set_api_key(db, "AA:BB:CC:DD:EE:FF")
         remove_api_key(db, "AA:BB:CC:DD:EE:FF")
@@ -159,4 +159,61 @@ class TestAPIKeyStorage:
         db.commit()
         assert verify_device_key(plain_key, hash_api_key(plain_key), ""), (
             "legacy unsalted row should verify"
+        )
+
+
+class TestLogOnlyMode:
+    """Compatibility window: DEVICE_AUTH_LOG_ONLY logs but accepts (rollout)."""
+
+    def test_log_only_accepts_missing_key(self, app, client, monkeypatch):
+        monkeypatch.setattr("app.config.Config.DEVICE_AUTH_LOG_ONLY", True)
+        resp = client.post(
+            "/api/sensor/data",
+            json={
+                "controller_mac": "AA:BB:CC:DD:EE:FF",
+                "readings": [{"address": "S1", "temperature": 22.0, "recorded_at": _ts()}],
+            },
+        )
+        assert resp.status_code in (200, 201), (
+            f"log-only mode must accept missing key, got {resp.status_code}"
+        )
+
+    def test_log_only_accepts_invalid_key(self, app, client, monkeypatch):
+        monkeypatch.setattr("app.config.Config.DEVICE_AUTH_LOG_ONLY", True)
+        resp = client.post(
+            "/api/sensor/data",
+            headers={"X-Device-Key": "wrong-key"},
+            json={
+                "controller_mac": "AA:BB:CC:DD:EE:FF",
+                "readings": [{"address": "S1", "temperature": 22.0, "recorded_at": _ts()}],
+            },
+        )
+        assert resp.status_code in (200, 201), (
+            f"log-only mode must accept invalid key, got {resp.status_code}"
+        )
+
+    def test_log_only_logs_warning(self, app, client, monkeypatch, caplog):
+        monkeypatch.setattr("app.config.Config.DEVICE_AUTH_LOG_ONLY", True)
+        with caplog.at_level("WARNING"):
+            client.post(
+                "/api/sensor/data",
+                json={
+                    "controller_mac": "AA:BB:CC:DD:EE:FF",
+                    "readings": [{"address": "S1", "temperature": 22.0, "recorded_at": _ts()}],
+                },
+            )
+        assert "log-only" in caplog.text, (
+            "log-only mode must emit a warning for unauthenticated ingestion"
+        )
+
+    def test_log_only_off_enforces_by_default(self, app, client):
+        resp = client.post(
+            "/api/sensor/data",
+            json={
+                "controller_mac": "AA:BB:CC:DD:EE:FF",
+                "readings": [{"address": "S1", "temperature": 22.0, "recorded_at": _ts()}],
+            },
+        )
+        assert resp.status_code in (401, 403), (
+            f"enforcement is the default, got {resp.status_code}"
         )
