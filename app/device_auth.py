@@ -1,52 +1,93 @@
 import hashlib
+import hmac
 import secrets
+import time
 from functools import wraps
+
 from flask import request, g
+
 from .db import get_db
 from .responses import error
 
+SALT_BYTES = 16
+KEY_PREFIX = "ysd-"
 
-def hash_api_key(key):
-    return hashlib.sha256(key.encode()).hexdigest()
+
+def hash_api_key(key, salt=""):
+    """SHA-256 of (key + salt). Kept salt-optional for legacy unsalted rows."""
+    return hashlib.sha256((key + salt).encode()).hexdigest()
+
+
+def verify_device_key(plain_key, stored_hash, salt=""):
+    """Constant-time comparison. Legacy rows store an unsalted hash (salt='')."""
+    if salt:
+        computed = hash_api_key(plain_key, salt)
+    else:
+        computed = hash_api_key(plain_key)
+    return hmac.compare_digest(computed, stored_hash)
+
+
+def generate_api_key():
+    """Returns (plain_key, key_hash, salt). Plain key is shown once at issue."""
+    raw = secrets.token_bytes(24)
+    plain = KEY_PREFIX + raw.hex()
+    salt = secrets.token_hex(SALT_BYTES)
+    return plain, hash_api_key(plain, salt), salt
 
 
 def store_api_key(db, controller_mac, plain_key):
-    key_hash = hash_api_key(plain_key)
-    import time
+    salt = secrets.token_hex(SALT_BYTES)
+    key_hash = hash_api_key(plain_key, salt)
     now = int(time.time() * 1000)
     db.execute(
-        "INSERT OR REPLACE INTO controller_api_keys (controller_mac, key_hash, created_at) VALUES (?, ?, ?)",
-        (controller_mac, key_hash, now),
+        "INSERT OR REPLACE INTO controller_api_keys "
+        "(controller_mac, key_hash, salt, is_active, created_at) "
+        "VALUES (?, ?, ?, 1, ?)",
+        (controller_mac, key_hash, salt, now),
     )
     db.commit()
 
 
-def generate_api_key():
-    return "ysd-" + secrets.token_hex(24)
-
-
 def set_api_key(db, controller_mac):
-    plain_key = generate_api_key()
-    store_api_key(db, controller_mac, plain_key)
+    """Issue or rotate a key. Atomic: replaces the previous row."""
+    plain_key, key_hash, salt = generate_api_key()
+    now = int(time.time() * 1000)
+    db.execute(
+        "INSERT OR REPLACE INTO controller_api_keys "
+        "(controller_mac, key_hash, salt, is_active, created_at) "
+        "VALUES (?, ?, ?, 1, ?)",
+        (controller_mac, key_hash, salt, now),
+    )
+    db.commit()
     return plain_key
 
 
 def remove_api_key(db, controller_mac):
+    """Soft-revoke: keep the row for audit, mark it inactive."""
+    now = int(time.time() * 1000)
     db.execute(
-        "DELETE FROM controller_api_keys WHERE controller_mac = ?",
-        (controller_mac,),
+        "UPDATE controller_api_keys "
+        "SET is_active = 0, revoked_at = ? "
+        "WHERE controller_mac = ?",
+        (now, controller_mac),
     )
     db.commit()
 
 
 def get_api_key_info(db, controller_mac):
     row = db.execute(
-        "SELECT created_at FROM controller_api_keys WHERE controller_mac = ?",
+        "SELECT created_at, is_active, revoked_at FROM controller_api_keys "
+        "WHERE controller_mac = ?",
         (controller_mac,),
     ).fetchone()
     if row is None:
         return None
-    return {"exists": True, "created_at": row[0]}
+    return {
+        "exists": True,
+        "created_at": row[0],
+        "is_active": bool(row[1]),
+        "revoked_at": row[2],
+    }
 
 
 def require_device_auth(f):
@@ -54,14 +95,25 @@ def require_device_auth(f):
     def decorated(*args, **kwargs):
         device_key = request.headers.get("X-Device-Key")
         if not device_key:
-            return error("Missing X-Device-Key header", 401)
-        key_hash = hash_api_key(device_key)
+            return error("MISSING_DEVICE_KEY", 401)
+
+        if not request.is_json:
+            return error("MISSING_DEVICE_KEY", 401)
+        body = request.get_json(silent=True) or {}
+        controller_mac = body.get("controller_mac")
+        if not controller_mac:
+            return error("MISSING_DEVICE_KEY", 401)
+
         conn = get_db()
         row = conn.execute(
-            "SELECT controller_mac FROM controller_api_keys WHERE key_hash = ?", (key_hash,)
+            "SELECT key_hash, salt FROM controller_api_keys "
+            "WHERE controller_mac = ? AND is_active = 1",
+            (controller_mac,),
         ).fetchone()
-        if not row:
-            return error("Invalid device key", 401)
-        g.device_mac = row[0]
+        if not row or not verify_device_key(device_key, row[0], row[1] or ""):
+            return error("INVALID_DEVICE_KEY", 401)
+
+        g.device_mac = controller_mac
         return f(*args, **kwargs)
+
     return decorated

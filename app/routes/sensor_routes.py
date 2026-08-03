@@ -13,9 +13,9 @@ device_bp = Blueprint("device", __name__, url_prefix="/api/device")
 
 
 @sensor_bp.route("/data", methods=["POST"])
-@require_device_auth
 @limiter.limit("50 per second")
 @use_schema(SensorDataBatch)
+@require_device_auth
 def post_sensor_data(data):
     result = sensor_service.ingest_readings(
         data.controller_mac, data.readings, data.keep_count

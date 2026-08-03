@@ -144,4 +144,12 @@ def admin_get_api_key_info(mac):
     info = get_api_key_info(db, mac)
     if info is None:
         return ok({"exists": False, "controller_mac": mac})
-    return ok({"exists": True, "controller_mac": mac, "created_at": info["created_at"]})
+    return ok(
+        {
+            "exists": True,
+            "controller_mac": mac,
+            "created_at": info["created_at"],
+            "is_active": info["is_active"],
+            "revoked_at": info["revoked_at"],
+        }
+    )
