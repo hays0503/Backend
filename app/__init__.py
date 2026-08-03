@@ -3,7 +3,11 @@ import uuid
 import time as _time
 from flask import Flask, g, request
 from flask_cors import CORS
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from .config import Config
+
+limiter = Limiter(key_func=get_remote_address)
 
 
 def create_app(config_class=Config):
@@ -30,6 +34,8 @@ def create_app(config_class=Config):
         expose_headers=getattr(config_class, "CORS_EXPOSE_HEADERS", ["X-Total-Count"]),
         supports_credentials=getattr(config_class, "CORS_SUPPORTS_CREDENTIALS", False),
     )
+
+    limiter.init_app(app)
 
     import logging
     log_level = getattr(logging, getattr(config_class, "LOG_LEVEL", "INFO").upper(), logging.INFO)

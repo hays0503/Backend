@@ -6,6 +6,7 @@ from ..schemas import use_schema, SensorDataBatch, RenameSensorRequest
 from ..device_auth import require_device_auth
 from ..services import sensor_service
 from ..services.user_service import _get_username
+from .. import limiter
 
 sensor_bp = Blueprint("sensor", __name__, url_prefix="/api/sensor")
 device_bp = Blueprint("device", __name__, url_prefix="/api/device")
@@ -13,6 +14,7 @@ device_bp = Blueprint("device", __name__, url_prefix="/api/device")
 
 @sensor_bp.route("/data", methods=["POST"])
 @require_device_auth
+@limiter.limit("50 per second")
 @use_schema(SensorDataBatch)
 def post_sensor_data(data):
     result = sensor_service.ingest_readings(

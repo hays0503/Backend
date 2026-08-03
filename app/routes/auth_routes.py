@@ -4,11 +4,13 @@ from ..audit import log_action
 from ..responses import ok
 from ..schemas import use_schema, LoginRequest, RefreshRequest, ProfileUpdate
 from ..services import auth_service
+from .. import limiter
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/api/auth")
 
 
 @auth_bp.route("/login", methods=["POST"])
+@limiter.limit("5 per minute")
 @use_schema(LoginRequest)
 def login(data):
     result = auth_service.login(data.username, data.password)
@@ -21,6 +23,7 @@ def login(data):
 
 
 @auth_bp.route("/refresh", methods=["POST"])
+@limiter.limit("5 per minute")
 @use_schema(RefreshRequest)
 def refresh(data):
     result = auth_service.refresh(data.refresh_token)

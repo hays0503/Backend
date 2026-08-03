@@ -1,1 +1,0 @@
-TEST_PASSWORD = "Admin123456!"

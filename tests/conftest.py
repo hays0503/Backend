@@ -122,6 +122,33 @@ def sample_data(db):
     }
 
 
+@pytest.fixture
+def device_key_data(app):
+    """Store a test API key in the database for device auth tests."""
+    from app.device_auth import hash_api_key
+    from app.config import Config
+    with sqlite3.connect(Config.DB_PATH) as conn:
+        key_hash = hash_api_key(TEST_DEVICE_KEY)
+        now = int(time.time() * 1000)
+        conn.execute(
+            "INSERT OR REPLACE INTO controller_api_keys (controller_mac, key_hash, created_at) VALUES (?, ?, ?)",
+            ("AA:BB:CC:DD:EE:FF", key_hash, now),
+        )
+        conn.commit()
+
+
+@pytest.fixture
+def device_headers():
+    """Headers for device-authenticated requests."""
+    return {"X-Device-Key": TEST_DEVICE_KEY}
+
+
+@pytest.fixture
+def admin_headers(auth_headers):
+    """Alias for auth_headers - admin authentication headers."""
+    return auth_headers
+
+
 MAC_A1 = "00:AA:00:00:00:01"
 MAC_A2 = "00:AA:00:00:00:02"
 MAC_B1 = "00:BB:00:00:00:01"

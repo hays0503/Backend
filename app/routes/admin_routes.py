@@ -8,6 +8,7 @@ from ..schemas import (
     ResetPasswordRequest,
     AssignControllersRequest,
 )
+from ..device_auth import set_api_key, remove_api_key, get_api_key_info
 from ..services import user_service, audit_service
 from ..services.user_service import _get_username
 
@@ -108,3 +109,39 @@ def admin_audit():
     limit, offset = parse_pagination_args()
     result = audit_service.get_audit_log(limit, offset)
     return ok(result)
+
+
+@admin_bp.route("/controllers/<mac>/api-key", methods=["POST"])
+@require_auth
+@require_admin
+def admin_generate_api_key(mac):
+    from ..db import get_db
+    db = get_db()
+    plain_key = set_api_key(db, mac)
+    username = _get_username(g.user_id)
+    log_action(g.user_id, username, "api_key_generated", "controller", mac)
+    return ok({"api_key": plain_key, "controller_mac": mac}, 201)
+
+
+@admin_bp.route("/controllers/<mac>/api-key", methods=["DELETE"])
+@require_auth
+@require_admin
+def admin_remove_api_key(mac):
+    from ..db import get_db
+    db = get_db()
+    remove_api_key(db, mac)
+    username = _get_username(g.user_id)
+    log_action(g.user_id, username, "api_key_removed", "controller", mac)
+    return ok()
+
+
+@admin_bp.route("/controllers/<mac>/api-key")
+@require_auth
+@require_admin
+def admin_get_api_key_info(mac):
+    from ..db import get_db
+    db = get_db()
+    info = get_api_key_info(db, mac)
+    if info is None:
+        return ok({"exists": False, "controller_mac": mac})
+    return ok({"exists": True, "controller_mac": mac, "created_at": info["created_at"]})

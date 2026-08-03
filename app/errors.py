@@ -1,6 +1,7 @@
 import logging
 import traceback
 from flask import jsonify, request, g, current_app
+from flask_limiter.errors import RateLimitExceeded
 
 
 class APIError(Exception):
@@ -44,6 +45,20 @@ logger = logging.getLogger(__name__)
 
 
 def register_error_handlers(app):
+    @app.errorhandler(RateLimitExceeded)
+    def handle_rate_limit(exc):
+        retry_after = getattr(exc, "retry_after", None)
+        resp = jsonify({
+            "error": {
+                "code": "RATE_LIMITED",
+                "message": f"Rate limit exceeded: {exc.description}",
+            }
+        })
+        resp.status_code = 429
+        if retry_after is not None:
+            resp.headers["Retry-After"] = str(retry_after)
+        return resp
+
     @app.errorhandler(APIError)
     def handle_api_error(exc):
         return jsonify(exc.to_dict()), exc.status_code
