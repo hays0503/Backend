@@ -24,9 +24,15 @@ class Config:
         if o.strip()
     ]
     CORS_METHODS = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
-    CORS_ALLOW_HEADERS = ["Content-Type", "Authorization", "X-Requested-With"]
+    CORS_ALLOW_HEADERS = [
+        "Content-Type",
+        "Authorization",
+        "X-Requested-With",
+        "X-CSRF-Token",
+        "X-YESCADA-TEST",
+    ]
     CORS_EXPOSE_HEADERS = ["X-Total-Count"]
-    CORS_SUPPORTS_CREDENTIALS = False
+    CORS_SUPPORTS_CREDENTIALS = True
     LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
     LOG_FILE = os.environ.get("LOG_FILE", "")
     TEMP_MIN = float(os.environ.get("YESCADA_TEMP_MIN", "-55.0"))
@@ -49,3 +55,18 @@ class Config:
     JWT_CLOCK_SKEW_SEC = int(os.environ.get("JWT_CLOCK_SKEW_SEC", "30"))
     RATELIMIT_STORAGE_URI = os.environ.get("RATELIMIT_STORAGE_URI", "memory://")
     RATELIMIT_DEFAULT = os.environ.get("RATELIMIT_DEFAULT", "200 per minute")
+    COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "false").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    COOKIE_SAMESITE_ACCESS = os.environ.get("COOKIE_SAMESITE_ACCESS", "Lax")
+    COOKIE_SAMESITE_REFRESH = os.environ.get("COOKIE_SAMESITE_REFRESH", "Strict")
+    ACCESS_COOKIE_NAME = os.environ.get("ACCESS_COOKIE_NAME", "yescada_access")
+    REFRESH_COOKIE_NAME = os.environ.get("REFRESH_COOKIE_NAME", "yescada_refresh")
+    CSRF_COOKIE_NAME = os.environ.get("CSRF_COOKIE_NAME", "yescada_csrf")
+    ACCESS_COOKIE_PATH = "/"
+    REFRESH_COOKIE_PATH = "/api/auth"
+    CSRF_HEADER = os.environ.get("CSRF_HEADER", "X-CSRF-Token")
+    CSRF_TEST_MARKER = "X-YESCADA-TEST"
+    CSRF_EXEMPT_PATHS = ["/api/auth/login", "/api/auth/refresh"]

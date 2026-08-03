@@ -1,7 +1,7 @@
 """B-19: CORS headers match policy.
 
 Regression: CORS headers match configured origins.
-Behavioral: credentials are NOT allowed by default.
+Behavioral: credentials ARE allowed (cookie-auth enabled); CSRF header allowed.
 """
 import pytest
 
@@ -42,16 +42,16 @@ class TestCORSHeaders:
 
 
 class TestCORSCredentials:
-    """Behavioral: credentials should NOT be allowed by default."""
+    """Behavioral: credentials should be allowed (cookie-auth enabled)."""
 
-    def test_no_credentials_by_default(self, app, client):
+    def test_credentials_allowed(self, app, client):
         resp = client.get(
             "/api/health",
             headers={"Origin": "http://localhost:5173"},
         )
         acac = resp.headers.get("Access-Control-Allow-Credentials")
-        assert acac != "true", (
-            "Credentials should NOT be allowed by default (Access-Control-Allow-Credentials must not be 'true')"
+        assert acac == "true", (
+            "Credentials should be allowed (Access-Control-Allow-Credentials must be 'true')"
         )
 
     def test_cors_supports_multiple_methods(self, app, client):
@@ -64,3 +64,16 @@ class TestCORSCredentials:
         )
         acam = resp.headers.get("Access-Control-Allow-Methods", "")
         assert "POST" in acam or resp.status_code in (200, 204)
+
+    def test_preflight_allows_csrf_header(self, app, client):
+        resp = client.options(
+            "/api/auth/logout",
+            headers={
+                "Origin": "http://localhost:5173",
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "X-CSRF-Token",
+            },
+        )
+        assert resp.status_code in (200, 204)
+        acah = resp.headers.get("Access-Control-Allow-Headers", "")
+        assert "X-CSRF-Token" in acah

@@ -1,9 +1,20 @@
-from flask import Blueprint, g
-from ..auth import require_auth
+from flask import Blueprint, g, request, current_app
+import secrets
+from ..auth import (
+    require_auth,
+    decode_token,
+    revoke_session,
+    set_auth_cookies,
+    set_csrf_cookie,
+    clear_auth_cookies,
+)
 from ..audit import log_action
 from ..responses import ok
-from ..schemas import use_schema, LoginRequest, RefreshRequest, ProfileUpdate
+from ..schemas import use_schema, LoginRequest, ProfileUpdate
 from ..services import auth_service
+from ..config import Config
+from ..db import get_db
+from ..errors import ValidationError
 from .. import limiter
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/api/auth")
@@ -19,15 +30,56 @@ def login(data):
         result["user"]["username"],
         "login",
     )
-    return ok(result)
+    resp, status_code = ok(result)
+    set_auth_cookies(resp, result["access_token"], result["refresh_token"])
+    set_csrf_cookie(resp)
+    return resp, status_code
 
 
 @auth_bp.route("/refresh", methods=["POST"])
 @limiter.limit("5 per minute")
-@use_schema(RefreshRequest)
-def refresh(data):
-    result = auth_service.refresh(data.refresh_token)
-    return ok(result)
+def refresh():
+    raw = request.get_json(silent=True) or {}
+    refresh_token = raw.get("refresh_token") or request.cookies.get(
+        Config.REFRESH_COOKIE_NAME
+    )
+    if not refresh_token:
+        raise ValidationError("Refresh token is required")
+    result = auth_service.refresh(refresh_token)
+    resp, status_code = ok(result)
+    set_auth_cookies(resp, result["access_token"], result["refresh_token"])
+    set_csrf_cookie(resp)
+    return resp, status_code
+
+
+@auth_bp.route("/logout", methods=["POST"])
+@limiter.limit("20 per minute")
+def logout():
+    refresh_token = request.cookies.get(Config.REFRESH_COOKIE_NAME)
+    if refresh_token:
+        payload = decode_token(refresh_token, "refresh")
+        if payload:
+            revoke_session(payload["jti"])
+            username = get_db().execute(
+                "SELECT username FROM users WHERE id = ?", (payload["user_id"],)
+            ).fetchone()
+            log_action(
+                payload["user_id"],
+                username[0] if username else str(payload["user_id"]),
+                "logout",
+            )
+    resp = current_app.response_class("", status=204)
+    clear_auth_cookies(resp)
+    return resp
+
+
+@auth_bp.route("/csrf-token", methods=["GET"])
+@limiter.limit("60 per minute")
+def csrf_token():
+    token = request.cookies.get(Config.CSRF_COOKIE_NAME) or secrets.token_urlsafe(32)
+    resp, status_code = ok({"csrf_token": token})
+    set_csrf_cookie(resp, token)
+    return resp, status_code
 
 
 @auth_bp.route("/me")

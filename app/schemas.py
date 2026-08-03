@@ -13,10 +13,6 @@ class LoginRequest(BaseModel):
     password: str = Field(min_length=1)
 
 
-class RefreshRequest(BaseModel):
-    refresh_token: str = Field(min_length=1)
-
-
 class ProfileUpdate(BaseModel):
     current_password: str = Field(min_length=1)
     username: Optional[str] = None

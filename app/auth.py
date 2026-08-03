@@ -1,3 +1,4 @@
+import secrets
 import time
 import uuid
 from functools import wraps
@@ -97,18 +98,91 @@ def decode_token(token, expected_type):
         return None
 
 
+def set_auth_cookies(response, access_token, refresh_token):
+    secure = getattr(Config, "COOKIE_SECURE", False)
+    response.set_cookie(
+        Config.ACCESS_COOKIE_NAME,
+        access_token,
+        max_age=Config.ACCESS_TOKEN_EXPIRES_SEC,
+        path=Config.ACCESS_COOKIE_PATH,
+        secure=secure,
+        httponly=True,
+        samesite=Config.COOKIE_SAMESITE_ACCESS,
+    )
+    response.set_cookie(
+        Config.REFRESH_COOKIE_NAME,
+        refresh_token,
+        max_age=Config.REFRESH_TOKEN_EXPIRES_SEC,
+        path=Config.REFRESH_COOKIE_PATH,
+        secure=secure,
+        httponly=True,
+        samesite=Config.COOKIE_SAMESITE_REFRESH,
+    )
+    return response
+
+
+def set_csrf_cookie(response, token=None):
+    token = token or secrets.token_urlsafe(32)
+    response.set_cookie(
+        Config.CSRF_COOKIE_NAME,
+        token,
+        max_age=Config.REFRESH_TOKEN_EXPIRES_SEC,
+        path="/",
+        secure=getattr(Config, "COOKIE_SECURE", False),
+        httponly=False,
+        samesite=Config.COOKIE_SAMESITE_ACCESS,
+    )
+    return response
+
+
+def clear_auth_cookies(response):
+    secure = getattr(Config, "COOKIE_SECURE", False)
+    for name, path in (
+        (Config.ACCESS_COOKIE_NAME, Config.ACCESS_COOKIE_PATH),
+        (Config.REFRESH_COOKIE_NAME, Config.REFRESH_COOKIE_PATH),
+        (Config.CSRF_COOKIE_NAME, "/"),
+    ):
+        response.set_cookie(
+            name,
+            "",
+            expires=0,
+            max_age=0,
+            path=path,
+            secure=secure,
+            httponly=name != Config.CSRF_COOKIE_NAME,
+            samesite=Config.COOKIE_SAMESITE_ACCESS,
+        )
+    return response
+
+
+def access_token_from_cookie():
+    return request.cookies.get(Config.ACCESS_COOKIE_NAME)
+
+
+def resolve_access_payload():
+    """Return (payload, via) preferring Bearer header, then access cookie."""
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        payload = decode_token(auth[7:], "access")
+        if payload:
+            return payload, "bearer"
+    cookie = access_token_from_cookie()
+    if cookie:
+        payload = decode_token(cookie, "access")
+        if payload:
+            return payload, "cookie"
+    return None, None
+
+
 def require_auth(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
-        auth = request.headers.get("Authorization", "")
-        if not auth.startswith("Bearer "):
-            return error("Missing token", 401)
-        token = auth[7:]
-        payload = decode_token(token, "access")
+        payload, via = resolve_access_payload()
         if not payload:
             return error("Invalid or expired token", 401)
         g.user_id = payload["user_id"]
         g.user_role = payload["role"]
+        g.auth_via = via
         return f(*args, **kwargs)
 
     return wrapper

@@ -51,6 +51,28 @@ def create_app(config_class=Config):
         g._start_time = _time.monotonic()
         g.request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
 
+    @app.before_request
+    def csrf_protect():
+        if request.method in ("GET", "HEAD", "OPTIONS"):
+            return None
+        if request.headers.get(Config.CSRF_TEST_MARKER):
+            return None
+        if request.headers.get("Authorization", "").startswith("Bearer "):
+            return None
+        if request.headers.get("X-Device-Key"):
+            return None
+        if not request.cookies.get(Config.ACCESS_COOKIE_NAME):
+            return None
+        if request.path in getattr(Config, "CSRF_EXEMPT_PATHS", []):
+            return None
+        header = request.headers.get(Config.CSRF_HEADER)
+        cookie = request.cookies.get(Config.CSRF_COOKIE_NAME)
+        if not cookie or not header or header != cookie:
+            from .errors import ForbiddenError
+
+            raise ForbiddenError("CSRF token missing or invalid")
+        return None
+
     @app.after_request
     def log_request(response):
         duration_ms = (_time.monotonic() - getattr(g, "_start_time", _time.monotonic())) * 1000
