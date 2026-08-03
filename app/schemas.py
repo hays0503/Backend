@@ -5,6 +5,8 @@ from typing import Optional
 from flask import request, current_app
 from pydantic import BaseModel, Field, ValidationError as PydanticValidationError, field_validator, model_validator
 
+from . import temperature_spec as spec
+
 MAC_RE = re.compile(r"^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$")
 
 
@@ -43,6 +45,7 @@ class SensorDataBatch(BaseModel):
     controller_mac: str = Field(min_length=1, max_length=32)
     readings: list[ReadingItem]
     keep_count: int = Field(default=1000, ge=1, le=10000)
+    spec_version: Optional[str] = None
 
     @field_validator("controller_mac")
     @classmethod
@@ -62,12 +65,17 @@ class SensorDataBatch(BaseModel):
         if len(self.readings) == 0:
             raise ValueError("readings must not be empty")
 
-        temp_min = cfg.get("TEMP_MIN", -50.0)
-        temp_max = cfg.get("TEMP_MAX", 150.0)
+        temp_min = spec.VALID_RANGE_MIN
+        temp_max = spec.VALID_RANGE_MAX
         window_ms = cfg.get("TIMESTAMP_WINDOW_HOURS", 24) * 3600 * 1000
         now_ms = int(__import__("time").time() * 1000)
 
         for i, r in enumerate(self.readings):
+            if spec.is_sentinel(r.temperature):
+                raise ValueError(
+                    f"readings[{i}].temperature={r.temperature} is a sentinel value "
+                    f"(spec sentinels: {sorted(spec.SENTINELS)})"
+                )
             if not (temp_min <= r.temperature <= temp_max):
                 raise ValueError(
                     f"readings[{i}].temperature={r.temperature} out of bounds [{temp_min}, {temp_max}]"

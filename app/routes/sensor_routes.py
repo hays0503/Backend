@@ -7,6 +7,7 @@ from ..device_auth import require_device_auth
 from ..services import sensor_service
 from ..services.user_service import _get_username
 from .. import limiter
+from .. import temperature_spec as spec
 
 sensor_bp = Blueprint("sensor", __name__, url_prefix="/api/sensor")
 device_bp = Blueprint("device", __name__, url_prefix="/api/device")
@@ -17,6 +18,15 @@ device_bp = Blueprint("device", __name__, url_prefix="/api/device")
 @use_schema(SensorDataBatch)
 @require_device_auth
 def post_sensor_data(data):
+    if data.spec_version is not None and data.spec_version != spec.SPEC_VERSION:
+        from flask import current_app
+
+        current_app.logger.warning(
+            "spec_version mismatch: client=%s backend=%s mac=%s",
+            data.spec_version,
+            spec.SPEC_VERSION,
+            data.controller_mac,
+        )
     result = sensor_service.ingest_readings(
         data.controller_mac, data.readings, data.keep_count
     )
