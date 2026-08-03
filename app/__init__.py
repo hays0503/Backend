@@ -68,9 +68,9 @@ def create_app(config_class=Config):
         response.headers["X-Request-ID"] = request_id
         return response
 
-    from .db import init_db, seed_admin, close_db
+    from .db import run_migrations, seed_admin, close_db
 
-    init_db()
+    run_migrations()
     if config_class.ADMIN_USERNAME and config_class.ADMIN_PASSWORD:
         result = seed_admin(config_class.ADMIN_USERNAME, config_class.ADMIN_PASSWORD)
         if result is not True:

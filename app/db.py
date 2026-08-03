@@ -1,9 +1,12 @@
+import os
 import re
 import sqlite3
 import time
 import json
 from flask import g
 from werkzeug.security import generate_password_hash
+from alembic.config import Config as AlembicConfig
+from alembic import command
 from .config import Config
 
 
@@ -21,142 +24,46 @@ def validate_password_strength(password: str) -> tuple[bool, str | None]:
     return True, None
 
 
-def init_db(db_path=None):
-    # TODO(B-13): Replace with Alembic migrations
+def run_migrations(db_path=None):
+    """Apply Alembic migrations to the database.
+
+    New/empty databases run ``upgrade head`` to build the schema.
+    Existing legacy databases (tables present but no ``alembic_version``)
+    are stamped at head so their data is never touched.
+    """
     path = db_path or Config.DB_PATH
-    with sqlite3.connect(path) as conn:
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA foreign_keys=ON")
+    alembic_cfg = AlembicConfig(Config.ALEMBIC_INI_PATH)
+    alembic_cfg.set_main_option("sqlalchemy.url", f"sqlite:///{path}")
 
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS controllers (
-                mac TEXT PRIMARY KEY,
-                first_seen INTEGER NOT NULL,
-                last_seen INTEGER NOT NULL,
-                sensor_count INTEGER DEFAULT 0
-            )
-        """)
+    tables = set()
+    if os.path.exists(path):
+        try:
+            with sqlite3.connect(path) as conn:
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute("PRAGMA foreign_keys=ON")
+                tables = {
+                    r[0]
+                    for r in conn.execute(
+                        "SELECT name FROM sqlite_master WHERE type='table'"
+                    )
+                }
+        except sqlite3.Error:
+            tables = set()
 
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS sensors (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                sensor_address TEXT NOT NULL,
-                controller_mac TEXT NOT NULL REFERENCES controllers(mac),
-                location TEXT DEFAULT NULL,
-                UNIQUE(controller_mac, sensor_address)
-            )
-        """)
-
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS readings (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                sensor_id INTEGER NOT NULL REFERENCES sensors(id),
-                temperature REAL NOT NULL,
-                recorded_at INTEGER NOT NULL,
-                UNIQUE(sensor_id, recorded_at)
-            )
-        """)
-        conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_readings_sensor_time
-            ON readings(sensor_id, recorded_at DESC)
-        """)
-
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT UNIQUE NOT NULL,
-                password_hash TEXT NOT NULL,
-                role TEXT NOT NULL DEFAULT 'user',
-                created_at INTEGER NOT NULL
-            )
-        """)
-
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS user_controllers (
-                user_id INTEGER NOT NULL REFERENCES users(id),
-                controller_mac TEXT NOT NULL REFERENCES controllers(mac),
-                PRIMARY KEY (user_id, controller_mac)
-            )
-        """)
-
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS audit_log (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                username TEXT NOT NULL,
-                action TEXT NOT NULL,
-                target_type TEXT,
-                target_id TEXT,
-                details TEXT,
-                created_at INTEGER NOT NULL
-            )
-        """)
-
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS auth_sessions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                jti TEXT UNIQUE NOT NULL,
-                user_id INTEGER NOT NULL REFERENCES users(id),
-                token_version INTEGER NOT NULL DEFAULT 0,
-                expires_at INTEGER NOT NULL,
-                revoked_at INTEGER,
-                created_at INTEGER NOT NULL
-            )
-        """)
-        conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_auth_sessions_user
-            ON auth_sessions(user_id)
-        """)
-        conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_auth_sessions_jti
-            ON auth_sessions(jti)
-        """)
-
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS controller_api_keys (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                controller_mac TEXT NOT NULL REFERENCES controllers(mac),
-                key_hash TEXT NOT NULL,
-                created_at INTEGER NOT NULL,
-                UNIQUE(controller_mac)
-            )
-        """)
-
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS schema_version (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                version INTEGER NOT NULL,
-                applied_at INTEGER NOT NULL
-            )
-        """)
-
-        row = conn.execute("SELECT COUNT(*) FROM schema_version").fetchone()
-        if row[0] == 0:
-            now = int(time.time())
-            conn.execute(
-                "INSERT INTO schema_version (version, applied_at) VALUES (?, ?)",
-                (1, now),
-            )
-
-        # --- Performance indexes (B-07) ---
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_sensors_controller_mac "
-            "ON sensors(controller_mac)"
-        )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_user_controllers_controller_mac "
-            "ON user_controllers(controller_mac)"
-        )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_audit_log_created_at "
-            "ON audit_log(created_at DESC)"
-        )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_controllers_last_seen "
-            "ON controllers(last_seen DESC)"
-        )
-
+    if "controllers" in tables and "alembic_version" not in tables:
+        command.stamp(alembic_cfg, "head")
+    else:
+        command.upgrade(alembic_cfg, "head")
     return path
+
+
+def init_db(db_path=None):
+    """Idempotent schema bootstrap (legacy-compatible name).
+
+    Equivalent to :func:`run_migrations`; kept so existing callers
+    (tests, startup path) keep working.
+    """
+    return run_migrations(db_path)
 
 
 def seed_admin(username, password, db_path=None):

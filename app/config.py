@@ -4,6 +4,7 @@ import os
 class Config:
     DB_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     DB_PATH = os.path.join(DB_DIR, "sensors.db")
+    ALEMBIC_INI_PATH = os.path.join(DB_DIR, "alembic.ini")
     SECRET_KEY = os.environ.get("SECRET_KEY", "")
     ACCESS_TOKEN_EXPIRES_SEC = 3600
     REFRESH_TOKEN_EXPIRES_SEC = 604800
