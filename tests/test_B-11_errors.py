@@ -3,7 +3,6 @@
 Regression: error responses must follow {error: {code, message, details}} format.
 Behavioral: 400, 404, 500 handlers produce correct format.
 """
-import pytest
 
 
 class TestErrorFormat:

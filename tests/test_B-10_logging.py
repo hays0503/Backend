@@ -4,7 +4,6 @@ Regression: each request logs method, path, status, duration.
 Behavioral: tokens/secrets are NOT logged.
 """
 import logging
-import pytest
 
 
 class TestRequestLogging:

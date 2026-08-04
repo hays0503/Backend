@@ -1,10 +1,12 @@
 import os
-import uuid
 import time as _time
+import uuid
+
 from flask import Flask, g, request
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+
 from .config import Config
 
 limiter = Limiter(key_func=get_remote_address)
@@ -90,7 +92,7 @@ def create_app(config_class=Config):
         response.headers["X-Request-ID"] = request_id
         return response
 
-    from .db import run_migrations, seed_admin, close_db
+    from .db import close_db, run_migrations, seed_admin
 
     run_migrations()
     if config_class.ADMIN_USERNAME and config_class.ADMIN_PASSWORD:
@@ -105,11 +107,11 @@ def create_app(config_class=Config):
 
     register_error_handlers(app)
 
-    from .routes.auth_routes import auth_bp
-    from .routes.sensor_routes import sensor_bp, device_bp
     from .routes.admin_routes import admin_bp
-    from .routes.setup_routes import setup_bp
+    from .routes.auth_routes import auth_bp
     from .routes.health_routes import health_bp
+    from .routes.sensor_routes import device_bp, sensor_bp
+    from .routes.setup_routes import setup_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(sensor_bp)

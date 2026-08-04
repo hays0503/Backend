@@ -3,7 +3,6 @@
 Regression: admin list users/controllers response has 'total' field.
 Behavioral: stable ordering by id.
 """
-import pytest
 
 
 class TestUsersTotalField:

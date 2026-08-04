@@ -3,7 +3,6 @@
 Regression: GET /api/health returns 200.
 Behavioral: response has 'status' key; DB connectivity check.
 """
-import pytest
 
 
 class TestHealthEndpointExists:

@@ -3,7 +3,6 @@
 Regression: conftest fixtures work correctly.
 Behavioral: app fixture creates temp DB, seeds admin, provides client.
 """
-import pytest
 
 
 class TestAppFixture:
@@ -17,7 +16,6 @@ class TestAppFixture:
         assert app.config["TESTING"] is True
 
     def test_app_has_config(self, app):
-        from app.config import Config
         assert hasattr(app.config, "SECRET_KEY") or "SECRET_KEY" in app.config
 
     def test_app_has_blueprints(self, app):

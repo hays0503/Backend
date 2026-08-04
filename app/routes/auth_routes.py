@@ -1,21 +1,23 @@
-from flask import Blueprint, g, request, current_app
 import secrets
+
+from flask import Blueprint, current_app, g, request
+
+from .. import limiter
+from ..audit import log_action
 from ..auth import (
-    require_auth,
+    clear_auth_cookies,
     decode_token,
+    require_auth,
     revoke_session,
     set_auth_cookies,
     set_csrf_cookie,
-    clear_auth_cookies,
 )
-from ..audit import log_action
-from ..responses import ok
-from ..schemas import use_schema, LoginRequest, ProfileUpdate
-from ..services import auth_service
 from ..config import Config
 from ..db import get_db
 from ..errors import ValidationError
-from .. import limiter
+from ..responses import ok
+from ..schemas import LoginRequest, ProfileUpdate, use_schema
+from ..services import auth_service
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/api/auth")
 

@@ -3,7 +3,6 @@
 Regression: CORS origins configurable via env var.
 Behavioral: multiple origins supported.
 """
-import pytest
 
 
 class TestCORSEnvConfig:

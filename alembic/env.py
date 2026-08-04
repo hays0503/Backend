@@ -3,15 +3,17 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parents[1]))
 
-from alembic import context
 from logging.config import fileConfig
+
+from alembic import context
 
 config = context.config
 if config.config_file_name:
     fileConfig(config.config_file_name)
 
-from app.config import Config
 from sqlalchemy import create_engine, text
+
+from app.config import Config
 
 target_metadata = None
 

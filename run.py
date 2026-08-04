@@ -1,4 +1,5 @@
 import getpass
+
 from app import create_app
 from app.db import seed_admin, validate_password_strength
 

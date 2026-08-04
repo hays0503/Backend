@@ -1,7 +1,8 @@
 import sqlite3
 import time
+
 from ..db import get_db
-from ..errors import NotFoundError, ForbiddenError
+from ..errors import ForbiddenError
 
 
 def get_user_controller_macs(user_id):

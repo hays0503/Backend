@@ -4,7 +4,6 @@ Regression: batch size limit enforced.
 Behavioral: empty readings rejected; MAC validation; timestamp window check.
 """
 import time
-import pytest
 
 
 class TestBatchSizeLimit:

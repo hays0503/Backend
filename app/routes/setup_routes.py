@@ -1,5 +1,6 @@
-from flask import Blueprint, request, jsonify
-from ..db import seed_admin, get_db
+from flask import Blueprint, jsonify, request
+
+from ..db import get_db, seed_admin
 
 setup_bp = Blueprint("setup", __name__)
 

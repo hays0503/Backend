@@ -4,7 +4,7 @@ Regression: JWT without 'iat' claim is rejected.
 Behavioral: 'iss' and 'aud' claims are validated; clock skew handled.
 """
 import time
-import pytest
+
 import jwt as pyjwt
 
 

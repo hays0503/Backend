@@ -4,7 +4,6 @@ Regression: Validates correct inserted/duplicate counts in various scenarios.
 Behavioral: Edge cases for reading counting.
 """
 import time
-import pytest
 
 
 class TestReadingCountBug:

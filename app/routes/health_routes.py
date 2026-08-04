@@ -1,6 +1,7 @@
 from flask import Blueprint
-from ..responses import ok, error
+
 from ..db import get_db
+from ..responses import error, ok
 
 health_bp = Blueprint("health", __name__, url_prefix="/api")
 

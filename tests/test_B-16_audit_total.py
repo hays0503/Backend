@@ -3,7 +3,6 @@
 Regression: audit response includes 'total' count.
 Behavioral: pagination works with total field.
 """
-import pytest
 
 
 class TestAuditTotalField:

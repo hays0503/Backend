@@ -4,6 +4,7 @@ Regression: UNIQUE constraint on (controller_mac, sensor_address) enforced.
 Behavioral: same sensor_address from different controllers is allowed.
 """
 import time
+
 import pytest
 
 

@@ -3,7 +3,6 @@
 Regression: admin_list_users should not call get_user_controller_macs per user.
 Behavioral: user without controllers returns empty list; user with N controllers returns all.
 """
-import pytest
 
 
 class TestNPlusOneDetection:

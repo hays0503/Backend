@@ -1,9 +1,10 @@
 import math
 import re
 from functools import wraps
-from typing import Optional
-from flask import request, current_app
-from pydantic import BaseModel, Field, ValidationError as PydanticValidationError, field_validator, model_validator
+
+from flask import current_app, request
+from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import ValidationError as PydanticValidationError
 
 from . import temperature_spec as spec
 
@@ -17,8 +18,8 @@ class LoginRequest(BaseModel):
 
 class ProfileUpdate(BaseModel):
     current_password: str = Field(min_length=1)
-    username: Optional[str] = None
-    password: Optional[str] = None
+    username: str | None = None
+    password: str | None = None
 
 
 class ReadingItem(BaseModel):
@@ -45,7 +46,7 @@ class SensorDataBatch(BaseModel):
     controller_mac: str = Field(min_length=1, max_length=32)
     readings: list[ReadingItem]
     keep_count: int = Field(default=1000, ge=1, le=10000)
-    spec_version: Optional[str] = None
+    spec_version: str | None = None
 
     @field_validator("controller_mac")
     @classmethod
@@ -86,7 +87,7 @@ class SensorDataBatch(BaseModel):
                     f"readings[{i}].recorded_at is older than {window_ms // 3600000}h"
                 )
             if r.recorded_at > now_ms + 60000:
-                raise ValueError("readings[{}].recorded_at is in the future".format(i))
+                raise ValueError(f"readings[{i}].recorded_at is in the future")
 
         self.keep_count = min(self.keep_count, cfg.get("MAX_KEEP_COUNT", 10000))
         return self

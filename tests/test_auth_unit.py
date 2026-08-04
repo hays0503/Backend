@@ -1,8 +1,9 @@
-import jwt
 import time
-from flask import g
-from app.config import Config
 
+import jwt
+from flask import g
+
+from app.config import Config
 
 AUDIENCE = getattr(Config, "JWT_AUDIENCE", "yescada-api")
 
@@ -119,8 +120,9 @@ class TestDecodeToken:
         assert result is None
 
     def test_decode_blacklisted_refresh_token(self, app):
-        from app.auth import create_refresh_token, decode_token, revoke_session, store_session
         import time as _time
+
+        from app.auth import create_refresh_token, decode_token, revoke_session, store_session
         token, jti = create_refresh_token(1)
         store_session(jti, 1, int(_time.time()) + 86400)
         revoke_session(jti)
@@ -128,8 +130,9 @@ class TestDecodeToken:
         assert payload is None
 
     def test_decode_non_blacklisted_refresh_token(self, app):
-        from app.auth import create_refresh_token, decode_token, revoke_session, store_session
         import time as _time
+
+        from app.auth import create_refresh_token, decode_token, revoke_session, store_session
         token, jti = create_refresh_token(1)
         store_session(jti, 1, int(_time.time()) + 86400)
         revoke_session("some-other-jti")
@@ -149,15 +152,16 @@ class TestDecodeToken:
 
 class TestRevokeRefreshToken:
     def test_revoked_token_fails_decode(self, app):
-        from app.auth import create_refresh_token, decode_token, revoke_session, store_session
         import time as _time
+
+        from app.auth import create_refresh_token, decode_token, revoke_session, store_session
         token, jti = create_refresh_token(1)
         store_session(jti, 1, int(_time.time()) + 86400)
         revoke_session(jti)
         assert decode_token(token, "refresh") is None
 
     def test_revoke_non_existent_jti_does_not_raise(self, app):
-        from app.auth import revoke_session, create_refresh_token, decode_token
+        from app.auth import create_refresh_token, decode_token, revoke_session
         revoke_session("nonexistent-jti")
         token, jti = create_refresh_token(1)
         payload = decode_token(token, "refresh")

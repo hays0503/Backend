@@ -1,4 +1,4 @@
-from app.sensors import get_user_controller_macs, check_sensor_access
+from app.sensors import check_sensor_access, get_user_controller_macs
 
 
 class TestGetUserControllerMacs:

@@ -1,6 +1,7 @@
 import logging
 import traceback
-from flask import jsonify, request, g, current_app
+
+from flask import current_app, g, jsonify, request
 from flask_limiter.errors import RateLimitExceeded
 
 

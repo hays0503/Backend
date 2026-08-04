@@ -4,7 +4,6 @@ Regression: 6th rapid login attempt returns 429.
 Behavioral: Rate limit headers present; ingestion endpoint rate-limited.
 """
 import time
-import pytest
 
 TEST_DEVICE_KEY = "test-device-key-for-testing"
 

@@ -3,7 +3,6 @@
 Regression: CORS headers match configured origins.
 Behavioral: credentials ARE allowed (cookie-auth enabled); CSRF header allowed.
 """
-import pytest
 
 
 class TestCORSHeaders:

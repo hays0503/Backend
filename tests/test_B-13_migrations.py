@@ -48,14 +48,14 @@ class TestMigrationIdempotency:
     """Behavioral: running init_db twice should not fail."""
 
     def test_init_db_is_idempotent(self, app):
-        from app.db import init_db
         from app.config import Config
+        from app.db import init_db
         init_db(Config.DB_PATH)
         init_db(Config.DB_PATH)
 
     def test_init_db_does_not_lose_data(self, app, db, sample_data):
-        from app.db import init_db
         from app.config import Config
+        from app.db import init_db
         count_before = db.execute("SELECT COUNT(*) FROM sensors").fetchone()[0]
         init_db(Config.DB_PATH)
         count_after = db.execute("SELECT COUNT(*) FROM sensors").fetchone()[0]

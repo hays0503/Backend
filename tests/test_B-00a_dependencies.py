@@ -3,9 +3,8 @@
 Regression: Test that pydantic is importable and present in requirements.
 Behavioral: Test that schemas import correctly.
 """
-import time
-import pytest
 import os
+import time
 
 
 class TestPydanticInstalled:

@@ -1,13 +1,14 @@
-from flask import Blueprint, request, g
-from ..auth import require_auth
-from ..audit import log_action
-from ..responses import ok
-from ..schemas import use_schema, SensorDataBatch, RenameSensorRequest
-from ..device_auth import require_device_auth
-from ..services import sensor_service
-from ..services.user_service import _get_username
+from flask import Blueprint, g, request
+
 from .. import limiter
 from .. import temperature_spec as spec
+from ..audit import log_action
+from ..auth import require_auth
+from ..device_auth import require_device_auth
+from ..responses import ok
+from ..schemas import RenameSensorRequest, SensorDataBatch, use_schema
+from ..services import sensor_service
+from ..services.user_service import _get_username
 
 sensor_bp = Blueprint("sensor", __name__, url_prefix="/api/sensor")
 device_bp = Blueprint("device", __name__, url_prefix="/api/device")

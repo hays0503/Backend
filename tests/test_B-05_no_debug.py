@@ -3,7 +3,6 @@
 Regression: FLASK_DEBUG defaults to False.
 Behavioral: various env values enable/disable debug correctly.
 """
-import pytest
 
 
 class TestDebugDefault:

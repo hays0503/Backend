@@ -1,15 +1,16 @@
 from flask import Blueprint, g
-from ..auth import require_auth, require_admin
+
 from ..audit import log_action
+from ..auth import require_admin, require_auth
+from ..device_auth import get_api_key_info, remove_api_key, set_api_key
 from ..responses import ok
 from ..schemas import (
-    use_schema,
+    AssignControllersRequest,
     CreateUserRequest,
     ResetPasswordRequest,
-    AssignControllersRequest,
+    use_schema,
 )
-from ..device_auth import set_api_key, remove_api_key, get_api_key_info
-from ..services import user_service, audit_service
+from ..services import audit_service, user_service
 from ..services.user_service import _get_username
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/api/admin")

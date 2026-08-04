@@ -1,16 +1,18 @@
 import time
+
 from werkzeug.security import check_password_hash, generate_password_hash
+
 from ..auth import (
     create_access_token,
     create_refresh_token,
     decode_token,
+    revoke_all_sessions,
     revoke_session,
     store_session,
-    revoke_all_sessions,
 )
 from ..config import Config
 from ..db import get_db
-from ..errors import UnauthorizedError, NotFoundError, ValidationError
+from ..errors import NotFoundError, UnauthorizedError, ValidationError
 from .sensor_service import get_user_controller_macs
 
 

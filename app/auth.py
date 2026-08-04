@@ -2,8 +2,10 @@ import secrets
 import time
 import uuid
 from functools import wraps
-from flask import request, g
+
 import jwt
+from flask import g, request
+
 from .config import Config
 from .db import get_db
 from .responses import error

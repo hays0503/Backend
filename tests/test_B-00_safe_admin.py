@@ -61,7 +61,7 @@ class TestSeedAdminRejection:
         )
 
     def test_seed_admin_accepts_strong_password(self, app, db, tmp_path):
-        from app.db import seed_admin, init_db
+        from app.db import init_db, seed_admin
         db_path = str(tmp_path / "test2.db")
         init_db(db_path)
         result = seed_admin("newadmin", "Strong1!pass", db_path=db_path)

@@ -3,7 +3,6 @@
 Regression: malformed JSON in audit log details doesn't cause 500.
 Behavioral: graceful handling returns default/empty instead of crash.
 """
-import pytest
 
 
 class TestMalformedAuditJSON:

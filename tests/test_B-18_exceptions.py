@@ -4,7 +4,6 @@ Regression: exceptions are logged server-side.
 Behavioral: stack trace is NOT exposed to client response.
 """
 import time
-import pytest
 from unittest.mock import patch
 
 

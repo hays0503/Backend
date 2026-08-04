@@ -1,6 +1,8 @@
 import sqlite3
 import time
+
 import pytest
+
 from app.db import seed_admin
 
 TEST_PASSWORD = "Admin123456!"
@@ -125,8 +127,8 @@ def sample_data(db):
 @pytest.fixture
 def device_key_data(app):
     """Store a test API key in the database for device auth tests."""
-    from app.device_auth import hash_api_key
     from app.config import Config
+    from app.device_auth import hash_api_key
     with sqlite3.connect(Config.DB_PATH) as conn:
         key_hash = hash_api_key(TEST_DEVICE_KEY)
         now = int(time.time() * 1000)

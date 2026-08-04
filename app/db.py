@@ -1,12 +1,15 @@
+import json
 import os
 import re
 import sqlite3
 import time
-import json
+
+from alembic.config import Config as AlembicConfig
 from flask import g
 from werkzeug.security import generate_password_hash
-from alembic.config import Config as AlembicConfig
+
 from alembic import command
+
 from .config import Config
 
 

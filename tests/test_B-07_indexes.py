@@ -3,7 +3,6 @@
 Regression: EXPLAIN QUERY PLAN shows index usage for sensor lookups.
 Behavioral: sensors, audit_log, controllers indexes exist.
 """
-import pytest
 
 
 class TestIndexExistence:

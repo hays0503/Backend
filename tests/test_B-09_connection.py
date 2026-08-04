@@ -3,15 +3,15 @@
 Regression: get_db() returns same connection within a request.
 Behavioral: foreign_keys=ON on request-scoped connection.
 """
-import pytest
 
 
 class TestRequestScopedConnection:
     """Regression: get_db() must return the same connection within a request."""
 
     def test_get_db_returns_same_connection(self, app, db):
-        from app.db import get_db
         from flask import g
+
+        from app.db import get_db
         with app.app_context():
             g.pop("db", None)
             conn1 = get_db()
@@ -19,16 +19,18 @@ class TestRequestScopedConnection:
             assert conn1 is conn2, "get_db() should return the same connection"
 
     def test_get_db_sets_row_factory(self, app, db):
-        from app.db import get_db
         from flask import g
+
+        from app.db import get_db
         with app.app_context():
             g.pop("db", None)
             conn = get_db()
             assert conn.row_factory is not None, "Connection should have row_factory set"
 
     def test_get_db_connection_has_foreign_keys(self, app, db):
-        from app.db import get_db
         from flask import g
+
+        from app.db import get_db
         with app.app_context():
             g.pop("db", None)
             conn = get_db()
@@ -36,8 +38,9 @@ class TestRequestScopedConnection:
             assert fk[0] == 1, "foreign_keys should be ON for request-scoped connection"
 
     def test_close_db_works(self, app, db):
-        from app.db import get_db, close_db
         from flask import g
+
+        from app.db import close_db, get_db
         with app.app_context():
             g.pop("db", None)
             conn = get_db()
@@ -53,8 +56,9 @@ class TestNoLegacyConnections:
     """
 
     def test_auth_routes_use_get_db(self):
-        from app.routes import auth_routes
         import inspect
+
+        from app.routes import auth_routes
         source = inspect.getsource(auth_routes)
         assert "sqlite3.connect" not in source, (
             "auth_routes.py still contains direct sqlite3.connect() calls"
@@ -66,8 +70,9 @@ class TestNoLegacyConnections:
         )
 
     def test_sensor_routes_use_get_db(self):
-        from app.routes import sensor_routes
         import inspect
+
+        from app.routes import sensor_routes
         source = inspect.getsource(sensor_routes)
         assert "sqlite3.connect" not in source, (
             "sensor_routes.py still contains direct sqlite3.connect() calls"
@@ -79,8 +84,9 @@ class TestNoLegacyConnections:
         )
 
     def test_admin_routes_use_get_db(self):
-        from app.routes import admin_routes
         import inspect
+
+        from app.routes import admin_routes
         source = inspect.getsource(admin_routes)
         assert "sqlite3.connect" not in source, (
             "admin_routes.py still contains direct sqlite3.connect() calls"
@@ -91,8 +97,8 @@ class TestNoLegacyConnections:
 
     def test_fk_violation_rolls_back_transaction(self, app, client, sample_data):
         """Contract: FK violation must roll back the transaction."""
+
         from app.db import get_db
-        from flask import g
         with app.app_context():
             conn = get_db()
             before = conn.execute("SELECT COUNT(*) FROM readings").fetchone()[0]
